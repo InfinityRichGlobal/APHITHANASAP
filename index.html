@@ -11,7 +11,7 @@
   <link rel="shortcut icon" type="image/png" href="https://lh3.googleusercontent.com/d/1WiZ4NjX0MUDPqn3hQmdTXoE9E6hET3eM" />
   <link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1WiZ4NjX0MUDPqn3hQmdTXoE9E6hET3eM" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-  
+
   <style>
     body, html {
       margin: 0;
@@ -109,32 +109,43 @@
 </head>
 <body>
 
+  <!-- 🔐 หน้า Login -->
+  <div class="container">
+    <div class="login-container">
+      <h1>เข้าสู่ระบบ</h1>
+      <input type="text" id="username" placeholder="Username" />
+      <input type="password" id="password" placeholder="Password" />
+      <button onclick="login()">Login</button>
+    </div>
+  </div>
 
+  <!-- 🌐 WebApp Content -->
   <div id="content">
-    <iframe src="https://script.google.com/macros/s/AKfycbwVUGfW4hz9lIy5X_xkbwKBLkWfQay22ijogScTjuXhavZNUdgFwREcqnlOcYD4k7-M/exec"></iframe>
+    <iframe 
+      src="https://script.google.com/macros/s/AKfycbwVUGfW4hz9lIy5X_xkbwKBLkWfQay22ijogScTjuXhavZNUdgFwREcqnlOcYD4k7-M/exec"
+      allow="fullscreen; clipboard-read; clipboard-write; camera; microphone; geolocation; web-share"
+    ></iframe>
     <button id="homeBtn"><i class="fas fa-home"></i></button>
   </div>
 
   <script>
-  function login() {
-    var username = document.getElementById("username").value;
-    var password = document.getElementById("password").value;
+    function login() {
+      var username = document.getElementById("username").value;
+      var password = document.getElementById("password").value;
 
-    // Check username and password against conditions
-    if ((username === "blacklist" && password === "iCe") || 
-        (username === "SuperiCez" && password === "Zaq1zaq!")) {
-      // When username and password are correct
-      document.querySelector(".container").style.display = "none";
-      document.getElementById("content").style.display = "block";
-    } else {
-      // When username or password is incorrect
-      alert("Invalid username or password");
+      if ((username === "blacklist" && password === "iCe") || 
+          (username === "SuperiCez" && password === "Zaq1zaq!")) {
+        document.querySelector(".container").style.display = "none";
+        document.getElementById("content").style.display = "block";
+      } else {
+        alert("Invalid username or password");
+      }
     }
-  }
 
     document.getElementById('homeBtn').addEventListener('click', () => {
       document.querySelector('iframe').src = 'https://script.google.com/macros/s/AKfycbwVUGfW4hz9lIy5X_xkbwKBLkWfQay22ijogScTjuXhavZNUdgFwREcqnlOcYD4k7-M/exec';
     });
   </script>
+
 </body>
 </html>
