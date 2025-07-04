@@ -109,15 +109,7 @@
 </head>
 <body>
 
-  <!-- 🔐 หน้า Login -->
-  <div class="container">
-    <div class="login-container">
-      <h1>เข้าสู่ระบบ</h1>
-      <input type="text" id="username" placeholder="Username" />
-      <input type="password" id="password" placeholder="Password" />
-      <button onclick="login()">Login</button>
-    </div>
-  </div>
+
 
   <!-- 🌐 WebApp Content -->
   <div id="content">
@@ -129,18 +121,7 @@
   </div>
 
   <script>
-    function login() {
-      var username = document.getElementById("username").value;
-      var password = document.getElementById("password").value;
 
-      if ((username === "blacklist" && password === "iCe") || 
-          (username === "SuperiCez" && password === "Zaq1zaq!")) {
-        document.querySelector(".container").style.display = "none";
-        document.getElementById("content").style.display = "block";
-      } else {
-        alert("Invalid username or password");
-      }
-    }
 
     document.getElementById('homeBtn').addEventListener('click', () => {
       document.querySelector('iframe').src = 'https://script.google.com/macros/s/AKfycbwVUGfW4hz9lIy5X_xkbwKBLkWfQay22ijogScTjuXhavZNUdgFwREcqnlOcYD4k7-M/exec';
