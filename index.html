@@ -10,21 +10,14 @@
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="shortcut icon" type="image/png" href="https://lh3.googleusercontent.com/d/1WiZ4NjX0MUDPqn3hQmdTXoE9E6hET3eM" />
   <link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1WiZ4NjX0MUDPqn3hQmdTXoE9E6hET3eM" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- DataTables CSS -->
-    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    
-    <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-    
-    <!-- Font Awesome 6 CDN (ใช้ได้กับ fa-brands) -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
-    <!-- Custom CSS -->
+  <!-- CDN ที่จำเป็น (ห้ามลบ ไม่งั้นตาราง/modal/ไอคอนพัง) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Custom CSS -->
     <style>
 /* ========== Import Google Fonts ========== */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -4712,65 +4705,60 @@ display: flex;
     <!-- Custom JavaScript -->
     <script>
 /* ============================================================
-   google.script.run SHIM → fetch() to Apps Script Web App
+   google.script.run SHIM -> fetch() to Apps Script Web App
    ทำให้โค้ดเดิมที่เรียก google.script.run.xxx() ทำงานบน GitHub Pages ได้
-   โดยไม่ต้องแก้โค้ดเดิมสักจุด
    ============================================================ */
 (function () {
-  // ⚠️ ใส่ Web App URL ของคุณตรงนี้ (ลงท้าย /exec)
+  // ใส่ Web App URL (ลงท้าย /exec)
   const API_URL = 'https://script.google.com/macros/s/AKfycbwVUGfW4hz9lIy5X_xkbwKBLkWfQay22ijogScTjuXhavZNUdgFwREcqnlOcYD4k7-M/exec';
 
   if (typeof window.google === 'undefined') window.google = {};
   if (!window.google.script) window.google.script = {};
 
-  function Runner() {
-    this._success = null;
-    this._failure = null;
-  }
-  Runner.prototype.withSuccessHandler = function (fn) {
-    this._success = fn; return this;
-  };
-  Runner.prototype.withFailureHandler = function (fn) {
-    this._failure = fn; return this;
-  };
-  // ดัก method อะไรก็ได้ที่ถูกเรียก = ชื่อฟังก์ชัน backend
-  const handler = {
-    get: function (target, prop) {
-      if (prop === 'withSuccessHandler' || prop === 'withFailureHandler') {
-        return target[prop].bind(target);
-      }
-      if (prop === '_success' || prop === '_failure') return target[prop];
-      // prop = ชื่อฟังก์ชัน backend → คืน function ที่ยิง fetch
-      return function () {
-        const args = Array.prototype.slice.call(arguments);
-        const success = target._success;
-        const failure = target._failure;
-        fetch(API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ fn: prop, args: args })
-        })
-          .then(function (r) { return r.text(); })
-          .then(function (text) {
-            let payload;
-            try { payload = JSON.parse(text); }
-            catch (e) { throw new Error('Bad JSON from server: ' + text.slice(0, 200)); }
-            if (payload && payload.__error) {
-              throw new Error(payload.__error);
-            }
-            // backend คืนค่าอะไร ส่งต่อให้ success handler ตรงๆ (เหมือน google.script.run)
-            if (success) success(payload.result);
+  function makeRunner() {
+    const state = { _success: null, _failure: null };
+
+    const proxy = new Proxy(state, {
+      get: function (target, prop) {
+        if (prop === 'withSuccessHandler') {
+          return function (fn) { target._success = fn; return proxy; };
+        }
+        if (prop === 'withFailureHandler') {
+          return function (fn) { target._failure = fn; return proxy; };
+        }
+        // property ภายในของ Proxy เอง
+        if (typeof prop === 'symbol' || prop in target) {
+          return target[prop];
+        }
+        // prop อื่น = ชื่อฟังก์ชัน backend -> คืน function ที่ยิง fetch
+        return function () {
+          const args = Array.prototype.slice.call(arguments);
+          const success = target._success;
+          const failure = target._failure;
+          fetch(API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ fn: prop, args: args })
           })
-          .catch(function (err) {
-            if (failure) failure(err);
-            else console.error('callApi error:', err);
-          });
-      };
-    }
-  };
+            .then(function (r) { return r.text(); })
+            .then(function (text) {
+              let payload;
+              try { payload = JSON.parse(text); }
+              catch (e) { throw new Error('Bad JSON from server: ' + text.slice(0, 200)); }
+              if (payload && payload.__error) throw new Error(payload.__error);
+              if (success) success(payload.result);
+            })
+            .catch(function (err) {
+              if (failure) failure(err);
+              else console.error('callApi error:', err);
+            });
+        };
+      }
+    });
+    return proxy;
+  }
+
   Object.defineProperty(window.google.script, 'run', {
-    get: function () {
-      return new Proxy(new Runner(), handler);
-    }
+    get: function () { return makeRunner(); }
   });
 })();
 
