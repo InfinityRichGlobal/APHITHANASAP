@@ -11,11 +11,11 @@
   <link rel="shortcut icon" type="image/png" href="https://lh3.googleusercontent.com/d/1WiZ4NjX0MUDPqn3hQmdTXoE9E6hET3eM" />
   <link rel="apple-touch-icon" href="https://lh3.googleusercontent.com/d/1WiZ4NjX0MUDPqn3hQmdTXoE9E6hET3eM" />
 
-  <!-- CDN ที่จำเป็น (ห้ามลบ ไม่งั้นตาราง/modal/ไอคอนพัง) -->
+  <!-- CDN ที่จำเป็น -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
   <!-- Custom CSS -->
     <style>
@@ -868,6 +868,7 @@ body {
         font-size: 11px;
         padding: 6px 10px;
     }
+    
 
     .gallery-grid {
         gap: 8px;
@@ -3455,6 +3456,7 @@ display: flex;
 
 </style>
 
+  
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
 </head>
@@ -3493,7 +3495,12 @@ display: flex;
                             <i class="bi bi-lock me-2"></i>รหัสผ่าน
                         </label>
                     </div>
-
+                    
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="rememberMe">
+                        <label class="form-check-label" for="rememberMe">จำชื่อผู้ใช้ไว้</label>
+                    </div>
+                    
                     <button type="submit" class="btn btn-login" id="loginBtn">
                         <span id="loginText">
                             <i class="bi bi-box-arrow-in-right me-2"></i>เข้าสู่ระบบ
@@ -3503,6 +3510,7 @@ display: flex;
                         </span>
                     </button>
                 </form>
+                
 
             </div>
         </div>
@@ -4459,6 +4467,7 @@ display: flex;
 
                 <!-- Tab Content -->
                 <div class="tab-content">
+                    
 
 <!-- BROKERS Panel -->
 <div class="tab-pane fade show active" id="brokers-panel">
@@ -4760,12 +4769,42 @@ display: flex;
 </script>
 <script>
 
+// ===== Helper: แจ้งเตือนสวยด้วย SweetAlert (แทน alert เดิม) =====
+function showAlert(message, type) {
+    if (typeof Swal === 'undefined') { alert(message); return; }
+    // เดาชนิดอัตโนมัติถ้าไม่ระบุ
+    if (!type) {
+        const m = String(message);
+        if (m.indexOf('ผิดพลาด') > -1 || m.indexOf('⚠️') > -1 || m.indexOf('ไม่พบ') > -1 ||
+            m.indexOf('ไม่มีสิทธิ์') > -1 || m.indexOf('กรุณา') > -1 || m.indexOf('ไม่ถูกต้อง') > -1) {
+            type = 'error';
+        } else if (m.indexOf('สำเร็จ') > -1 || m.indexOf('✅') > -1) {
+            type = 'success';
+        } else {
+            type = 'info';
+        }
+    }
+    Swal.fire({
+        text: String(message).replace(/⚠️|✅/g, '').trim(),
+        icon: type,
+        confirmButtonText: 'ตกลง',
+        confirmButtonColor: '#333',
+        heightAuto: false
+    });
+}
+
+
+  
+
 let galleryImages = [];
 let currentGalleryIndex = 0;
 let galleryModal;
 let currentFolderId = '';
 
 function showGallery(folderId, title) {
+    console.log('=== IMPROVED GALLERY SYSTEM (STABLE) ===');
+    console.log('Folder ID:', folderId);
+    console.log('Title:', title);
     
     if (!folderId || 
         folderId === "undefined" || 
@@ -4773,7 +4812,8 @@ function showGallery(folderId, title) {
         folderId === "" || 
         folderId === null || 
         folderId === undefined) {
-        alert('⚠️ เกิดข้อผิดพลาด: Folder ID ไม่ถูกต้อง\nกรุณาลองใหม่อีกครั้ง');
+        console.error('Invalid folderId:', folderId);
+        showAlert('⚠️ เกิดข้อผิดพลาด: Folder ID ไม่ถูกต้อง\nกรุณาลองใหม่อีกครั้ง');
         return;
     }
     
@@ -4799,27 +4839,35 @@ function showGallery(folderId, title) {
     if (galleryModal && typeof galleryModal.show === 'function') {
         galleryModal.show();
     } else {
+        console.error('Gallery modal not initialized');
         return;
     }
     
     loadImagesFromFolder(folderId);
 }
 
+console.log('✅ Gallery JavaScript ส่วนที่เหลือ - เสร็จสิ้นครับ!');
+
 function loadImagesFromFolder(folderId) {
+    console.log('กำลังโหลดรูปภาพจากโฟลเดอร์:', folderId);
     
     if (typeof google !== 'undefined' && google.script && google.script.run) {
+        console.log('พบ google.script.run - กำลังเรียกใช้ getFolderFiles');
         
         google.script.run
             .withSuccessHandler(function(result) {
+                console.log('ได้รับข้อมูลจาก getFolderFiles:', result);
                 handleImagesLoaded(result);
             })
             .withFailureHandler(function(error) {
+                console.error('เกิดข้อผิดพลาดในการโหลดรูปภาพ:', error);
                 document.getElementById('galleryLoading').style.display = 'none';
                 document.getElementById('galleryContent').innerHTML = 
                     '<div class="alert alert-danger">เกิดข้อผิดพลาดในการโหลดไฟล์: ' + error.message + '</div>';
             })
             .getFolderFiles(folderId);
     } else {
+        console.error('ไม่พบ google.script.run');
         document.getElementById('galleryLoading').style.display = 'none';
         document.getElementById('galleryContent').innerHTML = 
             '<div class="alert alert-danger">ไม่สามารถเชื่อมต่อกับ Google Apps Script ได้</div>';
@@ -4827,13 +4875,16 @@ function loadImagesFromFolder(folderId) {
 }
 
 function handleImagesLoaded(result) {
+    console.log('=== HANDLE IMAGES LOADED ===');
     
     try {
         let data;
         if (typeof result === 'string') {
             data = JSON.parse(result);
+            console.log('ข้อมูลที่ได้รับ (parsed):', data);
         } else {
             data = result;
+            console.log('ข้อมูลที่ได้รับ (object):', data);
         }
         
         document.getElementById('galleryLoading').style.display = 'none';
@@ -4843,15 +4894,18 @@ function handleImagesLoaded(result) {
             document.getElementById('folderName').textContent = data.folderName || 'ไม่ทราบชื่อ';
             
             galleryImages = data.files || [];
+            console.log(`จำนวนไฟล์ที่พบ: ${galleryImages.length}`);
             
             renderImprovedGallery();
             
         } else {
+            console.error('เกิดข้อผิดพลาด:', data.message);
             document.getElementById('galleryContent').innerHTML = 
                 '<div class="alert alert-danger">เกิดข้อผิดพลาด: ' + (data.message || 'ไม่ทราบสาเหตุ') + '</div>';
         }
         
     } catch (error) {
+        console.error('เกิดข้อผิดพลาดในการประมวลผลข้อมูล:', error);
         document.getElementById('galleryLoading').style.display = 'none';
         document.getElementById('galleryContent').innerHTML = 
             '<div class="alert alert-danger">เกิดข้อผิดพลาดในการประมวลผลข้อมูล</div>';
@@ -4859,6 +4913,7 @@ function handleImagesLoaded(result) {
 }
 
 function renderImprovedGallery() {
+    console.log('=== RENDER IMPROVED GALLERY (ALL ERRORS FIXED) ===');
     
     const container = document.getElementById('galleryContent');
     
@@ -4957,12 +5012,17 @@ function renderImprovedGallery() {
         setupGalleryUploadButton();
     }, 100);
     
+    console.log('Gallery แสดงผล ' + galleryImages.length + ' ไฟล์สำเร็จ');
 }
 
 function openVideoInDrive(fileId, fileName) {
+    console.log('=== OPEN VIDEO IN DRIVE ===');
+    console.log('File ID:', fileId);
+    console.log('File Name:', fileName);
     
     if (!fileId) {
-        alert('ไม่พบ File ID ของวีดีโอ');
+        console.error('File ID is required');
+        showAlert('ไม่พบ File ID ของวีดีโอ');
         return;
     }
     
@@ -4970,6 +5030,7 @@ function openVideoInDrive(fileId, fileName) {
 }
 
 function createVideoPlayerModal(fileId, fileName) {
+    console.log('Creating video player modal for:', fileName);
     
     const existingModal = document.getElementById('videoPlayerModal');
     if (existingModal) {
@@ -5023,24 +5084,29 @@ function createVideoPlayerModal(fileId, fileName) {
 
 function safeSetInnerHTML(element, htmlContent) {
     if (!element) {
+        console.error('Element not found for innerHTML');
         return;
     }
     
     try {
         element.innerHTML = htmlContent;
     } catch (error) {
+        console.error('Error setting innerHTML:', error);
         element.textContent = 'Error loading content';
     }
 }
 
 function safeInsertHTML(targetElement, position, htmlContent) {
     if (!targetElement) {
+        console.error('Target element not found for insertAdjacentHTML');
         return;
     }
     
     try {
         targetElement.insertAdjacentHTML(position, htmlContent);
     } catch (error) {
+        console.error('Error inserting HTML:', error);
+        console.log('Problematic HTML:', htmlContent);
         
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = htmlContent;
@@ -5052,9 +5118,13 @@ function safeInsertHTML(targetElement, position, htmlContent) {
 }
 
 function openFileInDrive(fileId, fileName) {
+    console.log('=== OPEN FILE IN GOOGLE DRIVE ===');
+    console.log('File ID:', fileId);
+    console.log('File Name:', fileName);
     
     if (!fileId) {
-        alert('ไม่พบ File ID');
+        console.error('File ID is required');
+        showAlert('ไม่พบ File ID');
         return;
     }
     
@@ -5065,6 +5135,7 @@ function openFileInDrive(fileId, fileName) {
 
 function getThumbnailUrl(fileId, size) {
     if (!fileId) {
+        console.error('File ID is required for thumbnail');
         return '';
     }
     
@@ -5118,13 +5189,15 @@ function openImageInNewTab() {
 }
 
 function openImprovedLightbox(index) {
+    console.log('=== OPEN IMPROVED LIGHTBOX (FIXED) ===');
+    console.log('Opening lightbox for index:', index);
     
     const imageFiles = galleryImages.filter(function(file) {
         return file.mimeType && file.mimeType.startsWith('image/');
     });
     
     if (imageFiles.length === 0) {
-        alert('ไม่มีรูปภาพให้แสดง');
+        showAlert('ไม่มีรูปภาพให้แสดง');
         return;
     }
     
@@ -5134,18 +5207,22 @@ function openImprovedLightbox(index) {
     });
     
     if (lightboxIndex === -1) {
+        console.log('Selected file is not an image');
         return;
     }
     
     currentGalleryIndex = lightboxIndex;
     const file = imageFiles[lightboxIndex];
-
+    
+    console.log('Opening lightbox for image:', file.name);
+    
     const lightbox = document.getElementById('improvedLightbox');
     const lightboxImg = document.getElementById('lightboxImg');
     const lightboxCaption = document.getElementById('lightboxCaption');
     const lightboxCounter = document.getElementById('lightboxCounter');
     
     if (!lightbox || !lightboxImg || !lightboxCaption || !lightboxCounter) {
+        console.error('Lightbox elements not found!');
         return;
     }
     
@@ -5165,6 +5242,7 @@ function openImprovedLightbox(index) {
     
     updateLightboxNavigation(lightboxIndex, imageFiles.length);
     
+    console.log('Lightbox displayed successfully');
 }
 
 function navigateImprovedLightbox(direction) {
@@ -5199,6 +5277,7 @@ function navigateImprovedLightbox(direction) {
 }
 
 function closeImprovedLightbox() {
+    console.log('Closing lightbox...');
     
     const lightbox = document.getElementById('improvedLightbox');
     if (lightbox) {
@@ -5232,6 +5311,7 @@ function setupKeyboardNavigation() {
     
     document.addEventListener('keydown', galleryKeyboardHandler);
     
+    console.log('Keyboard navigation setup complete');
 }
 
 function galleryKeyboardHandler(e) {
@@ -5293,6 +5373,7 @@ function createVideoPlaceholder(filename) {
 }
 
 function handleImageLoadError(imgElement, fileName) {
+    console.log('Image load error:', fileName);
     
     const placeholder = document.createElement('div');
     placeholder.className = 'gallery-placeholder';
@@ -5307,6 +5388,7 @@ function handleImageLoadError(imgElement, fileName) {
 }
 
 function handleVideoLoadError(imgElement, fileName) {
+    console.log('Video thumbnail error:', fileName);
     
     imgElement.src = createVideoPlaceholder(fileName);
 }
@@ -5331,7 +5413,22 @@ document.addEventListener('DOMContentLoaded', function() {
     successModal = new bootstrap.Modal(document.getElementById('successModal'));
     
     checkUserSession();
-    
+
+    // เติมชื่อผู้ใช้ที่จำไว้ + โฟกัสช่องแรกอัตโนมัติ
+    (function() {
+        var savedUser = localStorage.getItem('rememberedUsername');
+        var userInput = document.getElementById('username');
+        var pwInput = document.getElementById('password');
+        var rememberBox = document.getElementById('rememberMe');
+        if (savedUser && userInput) {
+            userInput.value = savedUser;
+            if (rememberBox) rememberBox.checked = true;
+            if (pwInput) pwInput.focus();      // มีชื่อแล้ว โฟกัสรหัสผ่านเลย
+        } else if (userInput) {
+            userInput.focus();                 // ยังไม่มี โฟกัสช่องชื่อ
+        }
+    })();
+
     initializeEventListeners();
 });
 
@@ -5362,22 +5459,29 @@ function showSuccessModal(title, message) {
 }
 
 function checkUserSession() {
+    console.log(' Checking user session...');
     
     const sessionKey = localStorage.getItem('userSessionKey');
     
     if (!sessionKey) {
+        console.log('❌ No session key found in localStorage');
         isLoggedIn = false;
         showLoginSection();
         return;
     }
 
+    console.log(' Found session key:', sessionKey);
+
     google.script.run
         .withSuccessHandler(function(result) {
+            console.log(' Session check result:', result);
             
             try {
                 const response = JSON.parse(result);
+                console.log('✅ Parsed response:', response);
                 
                 if (response.status === 'valid') {
+                    console.log('✅ Valid session for user:', response.user.username);
                     isLoggedIn = true;
                     showMainApp();
                     updateUserDisplay(response.user);
@@ -5387,15 +5491,20 @@ function checkUserSession() {
                     loadBrokerList();
                     
                     if (response.remainingMinutes) {
+                        console.log('⏱️ Session expires in:', response.remainingMinutes, 'minutes');
                     }
                 } else {
+                    console.log('❌ Invalid/expired session:', response.message);
                     handleSessionExpired(response.message);
                 }
             } catch (parseError) {
+                console.error(' JSON Parse Error:', parseError);
+                console.log(' Raw result:', result);
                 handleSessionExpired('ข้อมูล Session ผิดพลาด');
             }
         })
         .withFailureHandler(function(error) {
+            console.error(' Session check failed:', error);
             console.log(' Error details:', {
                 message: error.message,
                 name: error.name,
@@ -5412,6 +5521,7 @@ function checkUserSession() {
 }
 
 function handleSessionExpired(message) {
+    console.log(' Handling session expiry:', message);
     
     localStorage.removeItem('userSessionKey');
     
@@ -5455,9 +5565,17 @@ function handleLogin(e) {
             
             try {
                 const response = JSON.parse(result);
+                console.log(' Login response:', response);
                 
                 if (response.status === 'success') {
                     localStorage.setItem('userSessionKey', response.sessionKey);
+                    // จำชื่อผู้ใช้ถ้าติ๊ก "จำฉันไว้"
+                    var rememberBox = document.getElementById('rememberMe');
+                    if (rememberBox && rememberBox.checked) {
+                        localStorage.setItem('rememberedUsername', document.getElementById('username').value.trim());
+                    } else {
+                        localStorage.removeItem('rememberedUsername');
+                    }
                     
                     isLoggedIn = true;
                     showMainApp();
@@ -5471,16 +5589,20 @@ function handleLogin(e) {
                     loadBrokerList();
                     
                     if (response.timeout) {
+                        console.log('⏱️ Session timeout set to:', response.timeout, 'minutes');
                     }
                 } else {
+                    console.log('❌ Login failed:', response.message);
                     showLoginError(response.message);
                 }
             } catch (parseError) {
+                console.error(' Login parse error:', parseError);
                 showLoginError('เกิดข้อผิดพลาดในการแปลงข้อมูล');
             }
         })
         .withFailureHandler(function(error) {
             setLoginLoading(false);
+            console.error(' Login failed:', error);
             
             if (error.message && error.message.includes('SESSION_EXPIRED')) {
                 showLoginError('Session หมดอายุ กรุณาลองใหม่');
@@ -5584,23 +5706,33 @@ let originalAdminData = null;
 let isSimulatingUser = false;
 let userSimulatorModal;
 function showUserSimulator() {
+    console.log('=== SHOW USER SIMULATOR (WITH LOGGING) ===');
     
     if (currentUserClass !== 'admin') {
-        alert('ฟีเจอร์นี้สำหรับ Admin เท่านั้น');
+        console.log('❌ Access denied: Not admin user');
+        showAlert('ฟีเจอร์นี้สำหรับ Admin เท่านั้น');
         return;
     }
     
+    console.log('✅ Admin access confirmed, showing progress...');
     showProgress('กำลังโหลดรายชื่อผู้ใช้...', 'กำลังดึงข้อมูลจากระบบ', 20);
     
+    console.log(' Calling getAllUsersForSimulator()...');
     google.script.run
         .withSuccessHandler(function(result) {
+            console.log(' Raw result received:', result);
+            console.log(' Result type:', typeof result);
             
             hideProgress();
             
             try {
                 const data = JSON.parse(result);
+                console.log('✅ Parsed data:', data);
+                console.log(' Data status:', data.status);
                 
                 if (data.status === 'success') {
+                    console.log(' Success! Processing users...');
+                    console.log(' Total users received:', data.users ? data.users.length : 0);
                     
                     if (data.users && data.users.length > 0) {
                         let brokerCount = 0;
@@ -5619,25 +5751,37 @@ function showUserSimulator() {
                                 investorCount++;
                             }
                         });
-
+                        
+                        console.log(' User Summary:');
+                        console.log(`   Brokers (super_user): ${brokerCount}`);
+                        console.log(`   Investors (user): ${investorCount}`);
+                        console.log(`   Total: ${data.users.length}`);
+                        
+                        console.log('️ Creating user simulator modal...');
                         createUserSimulatorModal(data.users);
                         
+                        console.log(' Showing modal...');
                         userSimulatorModal = new bootstrap.Modal(document.getElementById('userSimulatorModal'));
                         userSimulatorModal.show();
                         
                     } else {
-                        alert('ไม่พบรายชื่อผู้ใช้ในระบบ');
+                        console.log('⚠️ No users found in response');
+                        showAlert('ไม่พบรายชื่อผู้ใช้ในระบบ');
                     }
                     
                 } else {
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                    console.log('❌ Error status received:', data.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
                 }
                 
             } catch (parseError) {
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + parseError.message);
+                console.error(' JSON Parse Error:', parseError);
+                console.log(' Raw result that failed to parse:', result);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + parseError.message);
             }
         })
         .withFailureHandler(function(error) {
+            console.error(' Google Apps Script Error:', error);
             console.log(' Error details:', {
                 message: error.message,
                 name: error.name,
@@ -5645,22 +5789,30 @@ function showUserSimulator() {
             });
             
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error.message);
         })
         .getAllUsersForSimulator();
         
+    console.log(' Request sent to Google Apps Script...');
 }
 
 function createUserSimulatorModal(users) {
+    console.log('=== CREATE USER SIMULATOR MODAL (WITH LOGGING) ===');
+    console.log(' Users to process:', users.length);
     
     const existingModal = document.getElementById('userSimulatorModal');
     if (existingModal) {
+        console.log('️ Removing existing modal...');
         existingModal.remove();
     }
     
+    console.log('️ Building broker user cards...');
     const brokerCards = createBrokerUserCards(users);
+    console.log(' Broker cards HTML length:', brokerCards.length);
     
+    console.log('️ Building investor user cards...');
     const investorCards = createInvestorUserCards(users);
+    console.log(' Investor cards HTML length:', investorCards.length);
     
     const userSimulatorModalHTML = `
 <div class="modal fade" id="userSimulatorModal" tabindex="-1" aria-hidden="true">
@@ -5710,25 +5862,33 @@ function createUserSimulatorModal(users) {
 </div>
     `;
     
+    console.log(' Modal HTML created, inserting into DOM...');
     document.body.insertAdjacentHTML('beforeend', userSimulatorModalHTML);
     
+    console.log('✅ User Simulator Modal created successfully');
 }
 
 function createBrokerUserCards(users) {
+    console.log('=== CREATE BROKER USER CARDS ===');
     let html = '';
     let found = false;
     let brokerCount = 0;
     
     users.forEach(function(user, index) {
+        console.log(` Checking user ${index + 1}:`, user.username, 'class:', user.class);
         
         if (user.class && user.class.startsWith('super_user')) {
             found = true;
             brokerCount++;
+            console.log(`✅ Found broker: ${user.username} (${user.class})`);
             html += createUserCard(user);
         }
     });
-
+    
+    console.log(` Broker Summary: Found ${brokerCount} brokers`);
+    
     if (!found) {
+        console.log('⚠️ No brokers found, showing empty message');
         html = '<div class="text-muted">ไม่มีนายหน้าในระบบ</div>';
     }
     
@@ -5736,20 +5896,26 @@ function createBrokerUserCards(users) {
 }
 
 function createInvestorUserCards(users) {
+    console.log('=== CREATE INVESTOR USER CARDS ===');
     let html = '';
     let found = false;
     let investorCount = 0;
     
     users.forEach(function(user, index) {
+        console.log(` Checking user ${index + 1}:`, user.username, 'class:', user.class);
         
         if (user.class && user.class.startsWith('user')) {
             found = true;
             investorCount++;
+            console.log(`✅ Found investor: ${user.username} (${user.class})`);
             html += createUserCard(user);
         }
     });
-
+    
+    console.log(` Investor Summary: Found ${investorCount} investors`);
+    
     if (!found) {
+        console.log('⚠️ No investors found, showing empty message');
         html = '<div class="text-muted">ไม่มีนายทุนในระบบ</div>';
     }
     
@@ -5757,6 +5923,7 @@ function createInvestorUserCards(users) {
 }
 
 function loadUserListForSimulator() {
+    console.log('Loading user list for simulator...');
     
     showProgress('กำลังโหลดรายชื่อ User...', 'กำลังดึงข้อมูล', 30);
     
@@ -5769,12 +5936,12 @@ function loadUserListForSimulator() {
                 populateUserLists(data.users);
                 userSimulatorModal.show(); 
             } else {
-                alert('เกิดข้อผิดพลาด: ' + data.message);
+                showAlert('เกิดข้อผิดพลาด: ' + data.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาด: ' + error.message);
         })
         .getAllUsersForSimulator();
 }
@@ -5806,6 +5973,7 @@ function populateUserLists(users) {
 }
 
 function createUserCard(user) {
+    console.log(` Creating card for user: ${user.username} (${user.class})`);
     
     const classColor = user.class.startsWith('super_user') ? '#0d6efd' : '#198754';
     const classText = user.class.startsWith('super_user') ? 'นายหน้า' : 'นายทุน';
@@ -5827,10 +5995,13 @@ function createUserCard(user) {
         </div>
     `;
     
+    console.log(`✅ Card created for: ${user.username}`);
     return cardHTML;
 }
 
 function simulateUserLogin(user) {
+    console.log('=== SIMULATE USER LOGIN ===');
+    console.log('Simulating:', user);
     
     if (!originalAdminData) {
         originalAdminData = {
@@ -5850,6 +6021,7 @@ function simulateUserLogin(user) {
             
             if (response.status === 'success') {
                 localStorage.setItem('userSessionKey', response.sessionKey);
+                console.log('✅ Updated localStorage with simulation sessionKey:', response.sessionKey);
                 
                 currentUser = user.username;
                 currentUserClass = user.class;
@@ -5868,17 +6040,18 @@ function simulateUserLogin(user) {
                 
             } else {
                 hideProgress();
-                alert('เกิดข้อผิดพลาด: ' + response.message);
+                showAlert('เกิดข้อผิดพลาด: ' + response.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการจำลอง: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการจำลอง: ' + error.message);
         })
         .simulateUserSession(user);
 }
 
 function exitUserSimulation() {
+    console.log('=== EXIT USER SIMULATION ===');
     
     if (!originalAdminData) {
         location.reload();
@@ -5895,6 +6068,7 @@ function exitUserSimulation() {
             
             if (response.status === 'success') {
                 localStorage.setItem('userSessionKey', response.sessionKey);
+                console.log('✅ Updated localStorage with admin sessionKey:', response.sessionKey);
                 
                 currentUser = originalAdminData.username;
                 currentUserClass = originalAdminData.class;
@@ -5936,12 +6110,12 @@ function exitUserSimulation() {
                 
             } else {
                 hideProgress();
-                alert('เกิดข้อผิดพลาด: ' + response.message);
+                showAlert('เกิดข้อผิดพลาด: ' + response.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการกลับสู่ Admin: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการกลับสู่ Admin: ' + error.message);
         })
         .restoreAdminSession(currentSimulationKey);
 
@@ -6067,6 +6241,7 @@ function updateUserInterface(userClass) {
             peopleFilterRow.style.display = 'flex';
         }
         
+        console.log('✅ Admin controls enabled');
     } else {
         addBtn.style.display = 'none';
         memberBtn.style.display = 'none';
@@ -6077,6 +6252,7 @@ function updateUserInterface(userClass) {
         }
             updateAdminOnlyElements(userClass);
         
+        console.log(' Admin controls disabled');
     }
 }
 
@@ -6097,8 +6273,11 @@ function confirmLogout() {
         .withSuccessHandler(function(result) {
             hideProgress();
             const response = JSON.parse(result);
-
+            
+            console.log(' Logout response:', response);
+            
             localStorage.removeItem('userSessionKey');
+            console.log('️ Session key removed from localStorage');
             
             isLoggedIn = false;
             showLoginSection();
@@ -6108,6 +6287,7 @@ function confirmLogout() {
         })
         .withFailureHandler(function(error) {
             hideProgress();
+            console.error(' Logout error:', error);
             
             localStorage.removeItem('userSessionKey');
             isLoggedIn = false;
@@ -6118,20 +6298,25 @@ function confirmLogout() {
 
 function debugSessionInfo() {
     const sessionKey = localStorage.getItem('userSessionKey');
+    console.log(' Current session key in localStorage:', sessionKey);
     
     if (sessionKey) {
         google.script.run
             .withSuccessHandler(function(result) {
+                console.log(' Debug session result:', result);
             })
             .withFailureHandler(function(error) {
+                console.error(' Debug session error:', error);
             })
             .checkSession(sessionKey);
     } else {
+        console.log(' No session key found');
     }
 }
 
 function clearLocalSession() {
     localStorage.removeItem('userSessionKey');
+    console.log(' Local session cleared');
     location.reload();
 }
 
@@ -6154,8 +6339,10 @@ function initializeEventListeners() {
     });
 
 document.getElementById('assetModal').addEventListener('hidden.bs.modal', function() {
+    console.log(' Modal hidden event triggered');
     
     if (this.dataset.processing === 'true') {
+        console.log('⚠️ Already processing, skipping');
         return;
     }
     this.dataset.processing = 'true';
@@ -6164,10 +6351,15 @@ document.getElementById('assetModal').addEventListener('hidden.bs.modal', functi
     const rowNumber = document.getElementById('rowNumber').value;
     
     const isCompleted = window.completedRows && window.completedRows.has(rowNumber);
-
+    
+    console.log(' Row:', rowNumber);
+    console.log(' Is completed?', isCompleted);
+    
     if (!isCompleted) {
+        console.log('️ Data not completed, calling resetForm');
         resetForm();
     } else {
+        console.log('✅ Data was completed, cleaning form without delete');
         form.reset();
         form.classList.remove('was-validated');
         form.removeAttribute('data-saved');
@@ -6182,6 +6374,7 @@ document.getElementById('assetModal').addEventListener('hidden.bs.modal', functi
         
         document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
         
+        console.log('✅ Form cleaned without deleting data');
     }
     
     setTimeout(() => {
@@ -6269,7 +6462,7 @@ function formatPhoneNumber(e) {
 
 function showAssetNameModal() {
     if (currentUserClass !== 'admin') {
-        alert('คุณไม่มีสิทธิ์ในการเพิ่มข้อมูล (เฉพาะ Admin เท่านั้น)');
+        showAlert('คุณไม่มีสิทธิ์ในการเพิ่มข้อมูล (เฉพาะ Admin เท่านั้น)');
         return;
     }
     
@@ -6283,7 +6476,7 @@ function createAsset() {
     const assetName = document.getElementById('newAssetName').value.trim();
     
     if (!assetName) {
-        alert('กรุณากรอกชื่อทรัพย์สิน');
+        showAlert('กรุณากรอกชื่อทรัพย์สิน');
         return;
     }
     
@@ -6307,10 +6500,12 @@ function createAsset() {
                     
                     if (window.completedRows) {
                         window.completedRows.delete(data.rowNumber);
+                        console.log(' New form opened, removed from completed:', data.rowNumber);
                     }
                     
                     const form = document.getElementById('assetForm');
                     form.removeAttribute('data-saved');
+                    console.log(' New form opened, data-saved cleared');
                     
                     document.getElementById('assetModalLabel').innerHTML = 
                         '<i class="bi bi-plus-circle"></i> เพิ่มข้อมูลทรัพย์สิน - ' + data.rowNumber + '.' + data.assetName;
@@ -6320,27 +6515,38 @@ function createAsset() {
                     
                 } else {
                     hideProgress();
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
                 }
             } catch (e) {
                 hideProgress();
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการสร้างข้อมูล: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการสร้างข้อมูล: ' + error.message);
         })
         .reserveNextRowAndFolders(assetName);
 }
 
+var isSubmitting = false;  // กันกดเซฟซ้ำระหว่างกำลังบันทึก
 async function submitAll() {
+    // กันกดซ้ำ: ถ้ากำลังบันทึกอยู่ ไม่ให้กดซ้ำ
+    if (isSubmitting) {
+        console.log('กำลังบันทึกอยู่ กรุณารอสักครู่');
+        return;
+    }
     try {
         const form = document.getElementById('assetForm');
         if (!form.checkValidity()) {
             form.classList.add('was-validated');
             return;
         }
+
+        // ล็อกปุ่มบันทึกไม่ให้กดซ้ำ
+        isSubmitting = true;
+        var saveBtns = document.querySelectorAll('#submitAllBtn, [onclick*="submitAll"]');
+        saveBtns.forEach(function(b) { b.disabled = true; b.style.opacity = '0.6'; });
         
         const rai = parseInt(document.getElementById('landRai').value) || 0;
         const ngan = parseInt(document.getElementById('landNgan').value) || 0;
@@ -6348,7 +6554,7 @@ async function submitAll() {
         const sqm = parseInt(document.getElementById('landSqm').value) || 0;
         
         if (rai === 0 && ngan === 0 && wah === 0 && sqm === 0) {
-            alert('❗ กรุณากรอกขนาดที่ดินอย่างน้อย 1 ช่อง\n(ไร่, งาน, ตร.วา, หรือ ตร.ม.)');
+            showAlert('❗ กรุณากรอกขนาดที่ดินอย่างน้อย 1 ช่อง\n(ไร่, งาน, ตร.วา, หรือ ตร.ม.)');
             document.getElementById('landRai').focus();
             return;
         }
@@ -6359,6 +6565,7 @@ async function submitAll() {
         if (rowNumber) {
             window.savingRowNumbers = window.savingRowNumbers || new Set();
             window.savingRowNumbers.add(rowNumber);
+            console.log(' Protecting row from deletion:', rowNumber);
         }
         
         if (isEditMode) {
@@ -6416,7 +6623,9 @@ async function submitAll() {
                 }
             }
         };
-
+        
+        console.log(' Saving data for row:', data.rowNumber, '(Edit mode:', isEditMode, ')');
+        
         if (isEditMode) {
             updateProgress('กำลังอัพเดทแถว...', 70);
         } else {
@@ -6441,11 +6650,14 @@ async function submitAll() {
         if (saveResponse.status !== 'success') {
             throw new Error(saveResponse.message);
         }
-
+        
+        console.log('✅ Data saved successfully for row:', data.rowNumber);
+        
         if (!isEditMode) {
             updateProgress('กำลังอัพโหลดไฟล์...', 50);
             await uploadAllFiles(data.rowNumber);
         } else {
+            console.log('⏭️ Skipping file upload in edit mode');
         }
         
         updateProgress('เสร็จสิ้น!', 100);
@@ -6455,9 +6667,11 @@ async function submitAll() {
             
             window.completedRows = window.completedRows || new Set();
             window.completedRows.add(rowNumber);
+            console.log('✅ Row marked as completed:', rowNumber);
             
             if (window.savingRowNumbers) {
                 window.savingRowNumbers.delete(rowNumber);
+                console.log(' Row protection removed:', rowNumber);
             }
             
             form.reset();
@@ -6473,7 +6687,9 @@ async function submitAll() {
             calculateLandSize();
             updateSummary();
             document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
-
+            
+            console.log(' Form cleaned before closing modal');
+            
             assetModal.hide();
             
             if (isEditMode) {
@@ -6492,10 +6708,17 @@ async function submitAll() {
         const rowNumber = document.getElementById('rowNumber').value;
         if (window.savingRowNumbers) {
             window.savingRowNumbers.delete(rowNumber);
+            console.log(' Row protection removed due to error:', rowNumber);
         }
         
         hideProgress();
-        alert('เกิดข้อผิดพลาด: ' + error.message);
+        showAlert('เกิดข้อผิดพลาด: ' + error.message);
+        console.error('Submit error:', error);
+    } finally {
+        // ปลดล็อกปุ่มบันทึกเสมอ ไม่ว่าสำเร็จหรือผิดพลาด
+        isSubmitting = false;
+        var saveBtns = document.querySelectorAll('#submitAllBtn, [onclick*="submitAll"]');
+        saveBtns.forEach(function(b) { b.disabled = false; b.style.opacity = '1'; });
     }
 }
 
@@ -6715,15 +6938,25 @@ function resetForm() {
     
     const isCompleted = window.completedRows && window.completedRows.has(rowNumber);
     const isSaving = window.savingRowNumbers && window.savingRowNumbers.has(rowNumber);
-
+    
+    console.log(' Reset Form Check:');
+    console.log('- Row Number:', rowNumber);
+    console.log('- Is Edit Mode:', isEditMode);
+    console.log('- Is Completed:', isCompleted);
+    console.log('- Is Saving:', isSaving);
+    
     if (isEditMode === 'false' && rowNumber && mainFolderId && !isCompleted && !isSaving) {
+        console.log('️ Deleting incomplete data - Row:', rowNumber);
         google.script.run
             .withSuccessHandler(function(result) {
+                console.log('ลบข้อมูลที่ไม่สมบูรณ์เรียบร้อย');
             })
             .withFailureHandler(function(error) {
+                console.error('ไม่สามารถลบข้อมูลได้:', error);
             })
             .deleteIncompleteData(rowNumber, mainFolderId);
     } else {
+        console.log('✅ Skipping delete - Data completed or being saved');
     }
     
     document.getElementById('assetForm').reset();
@@ -6815,9 +7048,11 @@ function loadInvestorList() {
                 });
                 
             } catch (e) {
+                console.error('Error loading investor list:', e);
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Error loading investor list:', error);
         })
         .getInvestorList();
 }
@@ -6841,9 +7076,11 @@ function loadBrokerList() {
                 });
                 
             } catch (e) {
+                console.error('Error loading broker list:', e);
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Error loading broker list:', error);
         })
         .getBrokerList();
 }
@@ -6859,6 +7096,7 @@ function fetchInvestorPhone(investorName) {
             document.getElementById('investorPhone').value = phone || '';
         })
         .withFailureHandler(function(error) {
+            console.error('Error fetching investor phone:', error);
         })
         .fetchInvestorPhone(investorName);
 }
@@ -6874,27 +7112,33 @@ function fetchBrokerPhone(brokerName) {
             document.getElementById('brokerPhone').value = phone || '';
         })
         .withFailureHandler(function(error) {
+            console.error('Error fetching broker phone:', error);
         })
         .fetchBrokerPhone(brokerName);
 }
 
 function buildTable(headers, data) {
+    console.log('buildTable called with:', { headers: headers.length, data: data.length });
     
     window.originalTableData = data;
     
     if (assetTable) {
         try {
             if (typeof assetTable.destroy === 'function') {
+                console.log('Destroying existing DataTable...');
                 assetTable.destroy();
             } else {
+                console.log('assetTable exists but not a valid DataTable, clearing manually...');
             }
         } catch (error) {
+            console.error('Error destroying DataTable:', error);
         }
         assetTable = null;
     }
     
     const table = document.getElementById('assetTable');
     if (!table) {
+        console.error('Table element not found!');
         return;
     }
     
@@ -6902,6 +7146,7 @@ function buildTable(headers, data) {
     const tbody = table.querySelector('tbody');
     
     if (!thead || !tbody) {
+        console.error('Table structure incomplete!');
         return;
     }
     
@@ -6927,6 +7172,7 @@ function buildTable(headers, data) {
     }).join('');
     
     try {
+        console.log('Creating new DataTable...');
         
         if (typeof $ === 'undefined') {
             throw new Error('jQuery not loaded');
@@ -7206,6 +7452,7 @@ function buildTable(headers, data) {
             return `${day} ${month} ${year}`;
           }
         } catch (e) {
+          console.error('วันที่ไม่ถูกต้อง:', data, e);
         }
       }
       return data || '';
@@ -7323,7 +7570,10 @@ function buildTable(headers, data) {
     ...(hideColumnDef ? [hideColumnDef] : [])
             ]
         });
+        
+        console.log('DataTable created successfully');
 
+        
         originalTableData = [...data];
         filteredTableData = [...data];
         
@@ -7332,7 +7582,9 @@ function buildTable(headers, data) {
         document.getElementById('multiFilterContainer').style.display = 'block';
 
     } catch (error) {
+        console.error('Failed to create DataTable:', error);
         
+        console.log('Using fallback table...');
         table.classList.add('table', 'table-striped', 'table-hover');
         
         const errorMsg = document.createElement('div');
@@ -7348,6 +7600,7 @@ function buildTable(headers, data) {
     
     document.getElementById('loading').style.display = 'none';
     
+    console.log('Table built successfully');
 }
 
 function format(data) {
@@ -7380,6 +7633,7 @@ function format(data) {
 }
     
 function setupTableEventListeners() {
+    console.log('Setting up table event listeners...');
     
     $(document).off('click', '.payment-btn');
     $(document).off('click', '.edit-btn');
@@ -7389,8 +7643,10 @@ function setupTableEventListeners() {
     
     $(document).on('click', '.payment-btn', function() {
         const rowNumber = $(this).data('row-number');
+        console.log('Payment button clicked:', rowNumber);
         showPaymentHistory(rowNumber);
     });
+    
 
     $(document).on('click', '.delete-btn', function() {
         const rowNumber = $(this).data('row-number');
@@ -7401,6 +7657,7 @@ function setupTableEventListeners() {
 $(document).on('click', '.edit-btn', function() {
     const rowNumber = $(this).data('row-number');
     const assetName = $(this).data('asset-name');
+    console.log('Edit button clicked:', rowNumber, assetName);
     editRow(rowNumber);
 });
     
@@ -7408,6 +7665,7 @@ $(document).on('click', '.edit-btn', function() {
         const folderId = $(this).data('folder-id');
         const title = $(this).data('title');
         
+        console.log('Gallery button clicked:', { folderId, title });
         showGallery(folderId, title);
     });
     
@@ -7416,18 +7674,24 @@ $(document).on('click', '.edit-btn', function() {
         var tr = $(this).closest('tr');
         
         if (!assetTable) {
+            console.error('assetTable not found');
             return;
         }
         
         var row = assetTable.row(tr);
         var data = row.data();
         
+        console.log('Show details clicked for:', data);
         showAssetDetails(data);
     });
     
+    console.log('Table event listeners setup complete');
 }
 
 function showAssetDetails(data) {
+    console.log('=== SHOW ASSET DETAILS (MINIMAL) ===');
+    console.log('Data:', data);
+    console.log('Current user class:', currentUserClass);
     
     if (!data || data.length === 0) {
         Swal.fire({
@@ -7587,6 +7851,7 @@ function resetAndAddCSS() {
     const oldCSS = document.getElementById('minimalModalCSS');
     if (oldCSS) {
         oldCSS.remove();
+        console.log('ลบ CSS เก่าแล้ว');
     }
     
     setTimeout(() => {
@@ -7832,6 +8097,7 @@ function addCleanModalCSS() {
         }
     `;
     document.head.appendChild(style);
+    console.log('เพิ่ม CSS ใหม่แล้ว');
 }
 
 function shareAssetData(data, assetName, assetId) {
@@ -8012,6 +8278,7 @@ function formatDateForShare(dateString) {
         return day + ' ' + month + ' ' + year;
         
     } catch (error) {
+        console.warn('Error formatting date for share:', dateString, error);
         return dateString;
     }
 }
@@ -8027,6 +8294,7 @@ function safeDestroyDataTable() {
     if (assetTable) {
         try {
             if ($.fn.DataTable.isDataTable('#assetTable')) {
+                console.log('Destroying existing DataTable...');
                 $('#assetTable').DataTable().destroy();
             }
             
@@ -8040,10 +8308,12 @@ function safeDestroyDataTable() {
             }
             
         } catch (error) {
+            console.warn('DataTable destroy warning:', error);
             
             try {
                 $('#assetTable').empty();
             } catch (e) {
+                console.warn('Force clear failed:', e);
             }
         } finally {
             assetTable = null;
@@ -8133,6 +8403,7 @@ function loadTable() {
     showProgress('กำลังโหลดข้อมูล...', 'กำลังเชื่อมต่อกับฐานข้อมูล', 10);
     
     const sessionKey = localStorage.getItem('userSessionKey');
+    console.log(' Sending sessionKey to loadTable:', sessionKey);
     
     if (!sessionKey) {
         hideProgress();
@@ -8173,6 +8444,7 @@ function loadTable() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM Content Loaded');
     
     function checkLibraries() {
         const checks = [];
@@ -8186,6 +8458,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         if (checks.length > 0) {
+            console.warn('Missing libraries:', checks.join(', '));
             return false;
         }
         
@@ -8200,10 +8473,13 @@ document.addEventListener('DOMContentLoaded', function() {
             attempts++;
             
             if (checkLibraries()) {
+                console.log('All libraries loaded successfully');
                 callback();
             } else if (attempts < maxAttempts) {
+                console.log('Waiting for libraries... (' + attempts + '/' + maxAttempts + ')');
                 setTimeout(check, 500);
             } else {
+                console.error('Libraries failed to load within timeout');
                 callback();
             }
         }
@@ -8219,12 +8495,15 @@ document.addEventListener('DOMContentLoaded', function() {
             paymentHistoryModal = new bootstrap.Modal(document.getElementById('paymentHistoryModal'));
             galleryModal = new bootstrap.Modal(document.getElementById('galleryModal'));
             successModal = new bootstrap.Modal(document.getElementById('successModal'));
-
+            
+            console.log('Modals initialized successfully');
+            
             checkUserSession();
             
             initializeEventListeners();
             
         } catch (error) {
+            console.error('Error during initialization:', error);
             checkUserSession();
             initializeEventListeners();
         }
@@ -8233,7 +8512,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function loadingProgress(current, total, message) {
     const percent = Math.round((current / total) * 100);
-
+    
+    console.log('Loading progress: ' + current + '/' + total + ' (' + percent + '%) - ' + message);
+    
     const progressElement = document.getElementById('loadingProgress');
     if (progressElement) {
         progressElement.textContent = 'Loading... ' + current + '/' + total + ' (' + percent + '%)';
@@ -8243,13 +8524,17 @@ function loadingProgress(current, total, message) {
 function debugInfo(step, details) {
     const timestamp = new Date().toLocaleTimeString();
     
+    console.log('[' + timestamp + '] Step ' + step + ': ' + details);
 }
 
 function setupGalleryUploadButton() {
+    console.log('=== SETUP GALLERY UPLOAD BUTTON (ERROR FIXED) ===');
     
     const uploadInput = document.getElementById('uploadMore');
+    console.log('Upload input found:', !!uploadInput);
     
     if (!uploadInput) {
+        console.error('Upload input not found!');
         return;
     }
     
@@ -8322,7 +8607,9 @@ function setupGalleryUploadButton() {
         if (!files || files.length === 0) {
             return;
         }
-
+        
+        console.log('Selected files:', files.length);
+        
         document.getElementById('previewStep').style.display = 'block';
         document.getElementById('uploadStep').style.display = 'block';
         
@@ -8337,23 +8624,27 @@ function setupGalleryUploadButton() {
         uploadButton.onclick = submitGalleryFiles;
     }
     
+    console.log('Gallery upload section created successfully');
 }
 
 async function submitGalleryFiles() {
+    console.log('=== SUBMIT GALLERY FILES ===');
     
     const uploadInput = document.getElementById('uploadMore');
     const uploadButton = document.getElementById('galleryUploadBtn');
     
     if (!uploadInput || !uploadInput.files.length) {
-        alert('กรุณาเลือกไฟล์ก่อน');
+        showAlert('กรุณาเลือกไฟล์ก่อน');
         return;
     }
     
     if (!currentFolderId) {
-        alert('ไม่พบ Folder ID');
+        showAlert('ไม่พบ Folder ID');
         return;
     }
-
+    
+    console.log('Submitting ' + uploadInput.files.length + ' files to folder ' + currentFolderId);
+    
     const originalButtonHTML = uploadButton.innerHTML;
     uploadButton.disabled = true;
     uploadButton.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>กำลังอัพโหลด...';
@@ -8387,7 +8678,8 @@ async function submitGalleryFiles() {
         
     } catch (error) {
         hideProgress();
-        alert('เกิดข้อผิดพลาด: ' + error.message);
+        console.error('Gallery upload error:', error);
+        showAlert('เกิดข้อผิดพลาด: ' + error.message);
         
         uploadButton.disabled = false;
         uploadButton.innerHTML = originalButtonHTML;
@@ -8395,50 +8687,63 @@ async function submitGalleryFiles() {
 }
 
 function uploadToGalleryFolder(fileData, folderId) {
+    console.log('=== UPLOADING TO GALLERY FOLDER ===');
+    console.log('Uploading ' + fileData.length + ' files to folder ' + folderId);
     
     updateProgress('กำลังอัพโหลดไปยัง Google Drive...', 'ส่งไฟล์ ' + fileData.length + ' ไฟล์', 80);
     
     google.script.run
         .withSuccessHandler(function(result) {
+            console.log('Upload result:', result);
             hideProgress();
             
             try {
                 const data = JSON.parse(result);
                 
                 if (data.status === 'success') {
+                    console.log('Upload successful: ' + data.uploadedFiles.length + ' files');
                     
                     showSuccessModal('อัพโหลดสำเร็จ', 
                         'อัพโหลด ' + data.uploadedFiles.length + ' ไฟล์สำเร็จ');
                     
                     setTimeout(function() {
+                        console.log('Refreshing gallery...');
                         const galleryTitle = document.getElementById('galleryTitle').textContent;
                         showGallery(folderId, galleryTitle);
                     }, 1500);
                     
                 } else {
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                    console.error('Upload failed:', data.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
                 }
             } catch (parseError) {
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล');
+                console.error('JSON parse error:', parseError);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล');
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Google Apps Script error:', error);
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการอัพโหลด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการอัพโหลด: ' + error.message);
         })
         .uploadFilesToSpecificFolder(fileData, folderId);
 }
 
 function processGalleryFiles(files) {
     return new Promise(function(resolve, reject) {
+        console.log('=== PROCESSING GALLERY FILES ===');
         
         const fileData = [];
         let completedFiles = 0;
         const totalFiles = files.length;
-
+        
+        console.log('Starting to process ' + totalFiles + ' files');
+        
         Array.from(files).forEach(function(file, index) {
+            console.log('Processing file ' + (index + 1) + '/' + totalFiles + ': ' + file.name + ' (' + file.size + ' bytes)');
             
             if (file.size > 50 * 1024 * 1024) {
+                console.warn('File ' + file.name + ' too large, skipping');
                 completedFiles++;
                 checkCompletion();
                 return;
@@ -8450,6 +8755,7 @@ function processGalleryFiles(files) {
             });
             
             if (!isAllowed) {
+                console.warn('File ' + file.name + ' type ' + file.type + ' not allowed, skipping');
                 completedFiles++;
                 checkCompletion();
                 return;
@@ -8458,6 +8764,7 @@ function processGalleryFiles(files) {
             const reader = new FileReader();
             
             reader.onload = function(event) {
+                console.log('File ' + (index + 1) + ' read successfully: ' + file.name);
                 
                 fileData.push({
                     name: 'gallery_' + Date.now() + '_' + index + '_' + file.name,
@@ -8475,6 +8782,7 @@ function processGalleryFiles(files) {
             };
             
             reader.onerror = function(error) {
+                console.error('Error reading file ' + file.name + ':', error);
                 completedFiles++;
                 checkCompletion();
             };
@@ -8483,8 +8791,10 @@ function processGalleryFiles(files) {
         });
         
         function checkCompletion() {
+            console.log('Completion check: ' + completedFiles + '/' + totalFiles);
             
             if (completedFiles === totalFiles) {
+                console.log('All files processed. Success: ' + fileData.length + '/' + totalFiles);
                 
                 if (fileData.length === 0) {
                     reject(new Error('ไม่มีไฟล์ที่สามารถประมวลผลได้'));
@@ -8498,7 +8808,10 @@ function processGalleryFiles(files) {
 
 function buildGallery(files) {
     const container = document.getElementById('galleryContent');
-
+    
+    console.log('=== BUILD GALLERY (Using Form System) ===');
+    console.log('files count:', files ? files.length : 0);
+    
     if (!files || files.length === 0) {
         container.innerHTML = '<div class="alert alert-info">ยังไม่มีไฟล์ในโฟลเดอร์นี้</div>';
     } else {
@@ -8610,6 +8923,7 @@ function renderGalleryGrid(files) {
     const container = document.getElementById('galleryContent');
     
     if (!container) {
+        console.error('Gallery container not found');
         return;
     }
     
@@ -8796,10 +9110,12 @@ function setupUploadMoreButton() {
             if (files.length === 0) return;
             
             if (!currentFolderId) {
-                alert('ไม่พบ Folder ID');
+                showAlert('ไม่พบ Folder ID');
                 return;
             }
-
+            
+            console.log('Selected ' + files.length + ' files for upload to folder ' + currentFolderId);
+            
             showProgress('กำลังอัพโหลดไฟล์...', 'กำลังอัพโหลด ' + files.length + ' ไฟล์', 10);
             
             const fileData = [];
@@ -8845,12 +9161,12 @@ function uploadFilesToFolder(fileData, folderId) {
                 const galleryTitle = document.getElementById('galleryTitle').textContent;
                 showGallery(folderId, galleryTitle);
             } else {
-                alert('เกิดข้อผิดพลาด: ' + data.message);
+                showAlert('เกิดข้อผิดพลาด: ' + data.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการอัพโหลด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการอัพโหลด: ' + error.message);
         })
         .uploadFilesToSpecificFolder(fileData, folderId);
 }
@@ -8858,53 +9174,61 @@ function uploadFilesToFolder(fileData, folderId) {
 async function uploadFiles(files, rowNumber, category) {
     if (!files || files.length === 0) return;
 
-    const fileData = [];
-    
+    const results = [];
+    const total = files.length;
+
+    // ส่งทีละไฟล์ (เร็วกว่า + ไม่ค้าง + เห็น progress จริง)
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        
-        if (file.size > 50 * 1024 * 1024) {
+
+        if (file.size > 200 * 1024 * 1024) {
+            console.warn('File too large, skip:', file.name);
             continue;
         }
-        
+
+        // แสดง progress ว่ากำลังทำไฟล์ไหน
+        const pct = Math.round((i / total) * 40) + 50;
+        updateProgress('กำลังอัพโหลด ' + category + ' (' + (i + 1) + '/' + total + '): ' + file.name, pct);
+
+        // อ่านไฟล์นี้เป็น base64 (ทีละไฟล์ ไม่รอครบทั้งชุด)
         const base64 = await new Promise(function(resolve, reject) {
             const reader = new FileReader();
             reader.onload = function() { resolve(reader.result); };
-            reader.onerror = function() { reject(new Error('Failed to read file: ' + file.name)); };
+            reader.onerror = function() { reject(new Error('อ่านไฟล์ไม่ได้: ' + file.name)); };
             reader.readAsDataURL(file);
         });
-        
-        fileData.push({
+
+        const singleFile = [{
             name: category + '_' + Date.now() + '_' + i + '_' + file.name,
             data: base64,
             mimeType: file.type,
             size: file.size
-        });
+        }];
+
+        // ส่งไฟล์เดียวนี้ไป backend แล้วรอให้เสร็จก่อนไปไฟล์ถัดไป
+        try {
+            const data = await new Promise(function(resolve, reject) {
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        try {
+                            const d = JSON.parse(result);
+                            if (d.status === 'success') resolve(d);
+                            else reject(new Error(d.message));
+                        } catch (e) { reject(e); }
+                    })
+                    .withFailureHandler(function(error) {
+                        reject(new Error(error.message));
+                    })
+                    .uploadFilesByCategory(singleFile, rowNumber, category);
+            });
+            if (data.uploadedFiles) results.push.apply(results, data.uploadedFiles);
+        } catch (err) {
+            console.error('อัพโหลดไฟล์ล้มเหลว:', file.name, err.message);
+            // ไฟล์เดียวพัง ไม่ทำให้ทั้งชุดล้ม — ข้ามไปไฟล์ถัดไป
+        }
     }
-    
-    if (fileData.length === 0) return;
-    
-    return new Promise(function(resolve, reject) {
-        google.script.run
-            .withSuccessHandler(function(result) {
-                const data = JSON.parse(result);
-                if (data.status === 'success') {
-                    
-                    if (data.uploadedFiles && data.uploadedFiles.length > 0) {
-                        data.uploadedFiles.forEach(function(file, index) {
-                        });
-                    }
-                    
-                    resolve(data);
-                } else {
-                    reject(new Error(data.message));
-                }
-            })
-            .withFailureHandler(function(error) {
-                reject(new Error(error.message));
-            })
-            .uploadFilesByCategory(fileData, rowNumber, category);
-    });
+
+    return { status: 'success', uploadedFiles: results, totalFiles: results.length };
 }
 
 function viewFile(url, name, type) {
@@ -8912,9 +9236,13 @@ function viewFile(url, name, type) {
 }
 
 function downloadFile(url, name) {
+    console.log('=== DOWNLOAD FILE ===');
+    console.log('URL:', url);
+    console.log('Name:', name);
     
     if (!url) {
-        alert('ไม่พบ URL สำหรับดาวน์โหลด');
+        console.error('Download URL is required');
+        showAlert('ไม่พบ URL สำหรับดาวน์โหลด');
         return;
     }
     
@@ -8932,22 +9260,28 @@ function downloadFile(url, name) {
         setTimeout(() => {
             document.body.removeChild(link);
         }, 100);
-
+        
+        console.log('Download initiated successfully');
+        
     } catch (error) {
+        console.error('Download error:', error);
         
         window.open(url, '_blank', 'noopener,noreferrer');
     }
 }
 
 function deleteFile(fileId) {
+    console.log('=== DELETE FILE ===');
+    console.log('File ID:', fileId);
     
     if (!fileId) {
-        alert('ไม่พบ File ID');
+        console.error('File ID is required');
+        showAlert('ไม่พบ File ID');
         return;
     }
     
     if (currentUserClass !== 'admin') {
-        alert('คุณไม่มีสิทธิ์ในการลบไฟล์');
+        showAlert('คุณไม่มีสิทธิ์ในการลบไฟล์');
         return;
     }
     
@@ -8973,15 +9307,17 @@ function deleteFile(fileId) {
                     }, 1500);
                     
                 } else {
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
                 }
             } catch (parseError) {
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล');
+                console.error('JSON parse error:', parseError);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล');
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการลบไฟล์: ' + error.message);
+            console.error('Delete file error:', error);
+            showAlert('เกิดข้อผิดพลาดในการลบไฟล์: ' + error.message);
         })
         .deleteFile(fileId);
 }
@@ -9063,12 +9399,12 @@ function showPaymentHistory(rowNumber) {
                 document.getElementById('paymentHistoryContent').innerHTML = content;
                 paymentHistoryModal.show();
             } else {
-                alert('เกิดข้อผิดพลาด: ' + data.message);
+                showAlert('เกิดข้อผิดพลาด: ' + data.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาด: ' + error.message);
         })
         .getPaymentHistory(rowNumber);
 }
@@ -9081,7 +9417,7 @@ function savePayment() {
     const paymentMethod = document.getElementById('paymentMethod').value;
     
     if (!paymentRound || !paymentDate || !paymentAmount || !paymentMethod) {
-        alert('กรุณากรอกข้อมูลให้ครบทุกช่อง');
+        showAlert('กรุณากรอกข้อมูลให้ครบทุกช่อง');
         return;
     }
     
@@ -9115,12 +9451,12 @@ function savePayment() {
                 document.getElementById('paymentAmount').value = '';
                 document.getElementById('paymentMethod').value = '';
             } else {
-                alert('เกิดข้อผิดพลาด: ' + data.message);
+                showAlert('เกิดข้อผิดพลาด: ' + data.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาด: ' + error.message);
         })
         .savePaymentData(rowNumber, paymentRound, paymentData);
 }
@@ -9202,6 +9538,7 @@ function renderPaymentList(payments, containerId) {
     const container = document.getElementById(containerId);
     
     if (!container) {
+        console.error('Payment container not found:', containerId);
         return;
     }
     
@@ -9317,9 +9654,11 @@ function handleFileSelection(input) {
 }
 
 function multiPreview(input, containerId) {
+    console.log('multiPreview called:', { inputId: input.id, filesCount: input.files.length });
     
     const container = document.getElementById(containerId);
     if (!container) {
+        console.error('Container not found:', containerId);
         return;
     }
     
@@ -9332,6 +9671,7 @@ function multiPreview(input, containerId) {
             const fileKey = file.name + '_' + file.size + '_' + index;
             
             if (processedFiles.has(fileKey)) {
+                console.log('File ' + fileKey + ' already processed, skipping');
                 return;
             }
             
@@ -9343,6 +9683,7 @@ function multiPreview(input, containerId) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     if (container.querySelector('[data-file-key="' + fileKey + '"]')) {
+                        console.log('Preview for ' + fileKey + ' already exists');
                         return;
                     }
                     
@@ -9359,11 +9700,13 @@ function multiPreview(input, containerId) {
                         '<small class="file-name">' + file.name + '</small>';
                     
                     container.appendChild(previewItem);
+                    console.log('Video preview ' + (index + 1) + ' added');
                 };
                 reader.readAsDataURL(file);
                 
             } else if (isHeic) {
                 if (container.querySelector('[data-file-key="' + fileKey + '"]')) {
+                    console.log('HEIC preview for ' + fileKey + ' already exists');
                     return;
                 }
                 
@@ -9381,11 +9724,13 @@ function multiPreview(input, containerId) {
                     '<small class="file-name">' + file.name + '</small>';
                 
                 container.appendChild(previewItem);
+                console.log('HEIC preview ' + (index + 1) + ' added');
                 
             } else {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     if (container.querySelector('[data-file-key="' + fileKey + '"]')) {
+                        console.log('Preview for ' + fileKey + ' already exists');
                         return;
                     }
                     
@@ -9400,15 +9745,18 @@ function multiPreview(input, containerId) {
                         '<small class="file-name">' + file.name + '</small>';
                     
                     container.appendChild(previewItem);
+                    console.log('Image preview ' + (index + 1) + ' added');
                 };
                 reader.readAsDataURL(file);
             }
         });
     } else {
+        console.log('No files to preview');
     }
 }
 
 function removeGalleryPreview(button, inputId, index) {
+    console.log('removeGalleryPreview called:', { inputId, index });
     
     const input = document.getElementById(inputId);
     const dt = new DataTransfer();
@@ -9420,19 +9768,25 @@ function removeGalleryPreview(button, inputId, index) {
     });
     
     input.files = dt.files;
+    console.log('Files after removal:', input.files.length);
     
     const containerId = button.closest('.preview-container').id;
+    console.log('Updating preview container:', containerId);
     multiPreview(input, containerId);
 }
 
 async function uploadAllFilesToGallery(folderId) {
+    console.log('=== UPLOAD ALL FILES TO GALLERY (IMPROVED) ===');
+    console.log('Folder ID:', folderId);
     
     const fileInput = document.getElementById('uploadMore');
     if (!fileInput || !fileInput.files.length) {
+        console.log('No files to upload');
         throw new Error('ไม่มีไฟล์ที่ต้องการอัพโหลด');
     }
     
     const files = fileInput.files;
+    console.log('Processing ' + files.length + ' files for gallery upload');
     
     updateProgress('กำลังประมวลผลไฟล์...', 20);
     
@@ -9440,8 +9794,10 @@ async function uploadAllFilesToGallery(folderId) {
     
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        console.log('Processing file ' + (i + 1) + '/' + files.length + ': ' + file.name);
         
         if (file.size > 50 * 1024 * 1024) {
+            console.warn('File ' + file.name + ' too large (' + file.size + ' bytes), skipping');
             continue;
         }
         
@@ -9462,7 +9818,9 @@ async function uploadAllFilesToGallery(folderId) {
         const progress = Math.round(((i + 1) / files.length) * 30) + 20;
         updateProgress('ประมวลผลไฟล์... (' + (i + 1) + '/' + files.length + ')', progress);
     }
-
+    
+    console.log('Prepared ' + fileData.length + ' files for upload');
+    
     if (fileData.length === 0) {
         throw new Error('ไม่มีไฟล์ที่สามารถประมวลผลได้');
     }
@@ -9472,20 +9830,25 @@ async function uploadAllFilesToGallery(folderId) {
     return new Promise(function(resolve, reject) {
         google.script.run
             .withSuccessHandler(function(result) {
+                console.log('Upload result:', result);
                 
                 try {
                     const data = JSON.parse(result);
                     
                     if (data.status === 'success') {
+                        console.log('Upload successful: ' + data.uploadedFiles.length + ' files');
                         resolve(data);
                     } else {
+                        console.error('Upload failed:', data.message);
                         reject(new Error(data.message));
                     }
                 } catch (parseError) {
+                    console.error('JSON parse error:', parseError);
                     reject(new Error('การแปลงข้อมูลผิดพลาด'));
                 }
             })
             .withFailureHandler(function(error) {
+                console.error('Google Apps Script error:', error);
                 reject(new Error(error.message || 'เกิดข้อผิดพลาดในการอัพโหลด'));
             })
             .uploadFilesToSpecificFolder(fileData, folderId);
@@ -9493,6 +9856,7 @@ async function uploadAllFilesToGallery(folderId) {
 }
 
 function removePreview(button, inputId, index) {
+    console.log('removePreview called:', { inputId, index });
     
     const input = document.getElementById(inputId);
     const dt = new DataTransfer();
@@ -9504,8 +9868,10 @@ function removePreview(button, inputId, index) {
     });
     
     input.files = dt.files;
+    console.log('Files after removal:', input.files.length);
     
     const containerId = button.closest('.preview-container').id;
+    console.log('Updating preview container:', containerId);
     multiPreview(input, containerId);
 }
 
@@ -9541,7 +9907,14 @@ async function uploadAllFiles(rowNumber) {
 $(document).off('click', '.gallery-btn').on('click', '.gallery-btn', function() {
     const folderId = $(this).data('folder-id');
     const title = $(this).data('title');
-
+    
+    console.log('=== BUTTON CLICKED ===');
+    console.log('Button element:', this);
+    console.log('data-folder-id:', folderId);
+    console.log('data-title:', title);
+    console.log('HTML:', this.outerHTML);
+    console.log('=====================');
+    
     showGallery(folderId, title);
 });
 
@@ -9665,16 +10038,16 @@ function executeDelete(rowNumber, assetName) {
                     
                 } else {
                     hideProgress();
-                    alert('เกิดข้อผิดพลาด: ' + response.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + response.message);
                 }
             } catch (e) {
                 hideProgress();
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการลบข้อมูล: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการลบข้อมูล: ' + error.message);
         })
         .deleteRowCompletely(rowNumber);
 }
@@ -9755,7 +10128,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function showMemberManagement() {
     if (currentUserClass !== 'admin') {
-        alert('คุณไม่มีสิทธิ์ในการจัดการสมาชิก (เฉพาะ Admin เท่านั้น)');
+        showAlert('คุณไม่มีสิทธิ์ในการจัดการสมาชิก (เฉพาะ Admin เท่านั้น)');
         return;
     }
     
@@ -10034,7 +10407,7 @@ function copyAllData() {
     const text = document.getElementById('copyAllText').textContent;
     
     navigator.clipboard.writeText(text).then(() => {
-        alert('✅ คัดลอกข้อมูลทั้งหมดสำเร็จ!\nพร้อมส่งให้สมาชิกใหม่');
+        showAlert('✅ คัดลอกข้อมูลทั้งหมดสำเร็จ!\nพร้อมส่งให้สมาชิกใหม่');
     }).catch(() => {
         const textArea = document.createElement('textarea');
         textArea.value = text;
@@ -10042,7 +10415,7 @@ function copyAllData() {
         textArea.select();
         document.execCommand('copy');
         document.body.removeChild(textArea);
-        alert('✅ คัดลอกข้อมูลทั้งหมดสำเร็จ!\nพร้อมส่งให้สมาชิกใหม่');
+        showAlert('✅ คัดลอกข้อมูลทั้งหมดสำเร็จ!\nพร้อมส่งให้สมาชิกใหม่');
     });
 }
 
@@ -10075,12 +10448,12 @@ function confirmSaveMember() {
                 newMemberData = {};
                 
             } else {
-                alert('เกิดข้อผิดพลาด: ' + data.message);
+                showAlert('เกิดข้อผิดพลาด: ' + data.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาด: ' + error.message);
         })
         .saveMemberData(newMemberData);
 }
@@ -10092,11 +10465,13 @@ function loadBrokersData() {
             if (data.status === 'success') {
                 buildBrokersTable(data.brokers);
             } else {
+                console.error('Error loading brokers:', data.message);
                 document.getElementById('brokersTableBody').innerHTML = 
                     '<tr><td colspan="6" class="text-center text-danger">เกิดข้อผิดพลาด: ' + data.message + '</td></tr>';
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Failed to load brokers:', error);
             document.getElementById('brokersTableBody').innerHTML = 
                 '<tr><td colspan="6" class="text-center text-danger">ไม่สามารถโหลดข้อมูลได้</td></tr>';
         })
@@ -10110,11 +10485,13 @@ function loadInvestorsData() {
             if (data.status === 'success') {
                 buildInvestorsTable(data.investors);
             } else {
+                console.error('Error loading investors:', data.message);
                 document.getElementById('investorsTableBody').innerHTML = 
                     '<tr><td colspan="6" class="text-center text-danger">เกิดข้อผิดพลาด: ' + data.message + '</td></tr>';
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Failed to load investors:', error);
             document.getElementById('investorsTableBody').innerHTML = 
                 '<tr><td colspan="6" class="text-center text-danger">ไม่สามารถโหลดข้อมูลได้</td></tr>';
         })
@@ -10128,11 +10505,13 @@ function loadUsersData() {
             if (data.status === 'success') {
                 buildUsersTable(data.users);
             } else {
+                console.error('Error loading users:', data.message);
                 document.getElementById('usersTableBody').innerHTML = 
                     '<tr><td colspan="6" class="text-center text-danger">เกิดข้อผิดพลาด: ' + data.message + '</td></tr>';
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Failed to load users:', error);
             document.getElementById('usersTableBody').innerHTML = 
                 '<tr><td colspan="6" class="text-center text-danger">ไม่สามารถโหลดข้อมูลได้</td></tr>';
         })
@@ -10287,10 +10666,12 @@ function getClassBadge(userClass) {
 }
 
 function showLoginInfo(memberType, index) {
+    console.log('Show login info for:', memberType, index);
 }
 
 function editMember(memberType, index) {
-    alert('ฟีเจอร์แก้ไขจะพัฒนาในเวรชันถัดไป');
+    console.log('Edit member:', memberType, index);
+    showAlert('ฟีเจอร์แก้ไขจะพัฒนาในเวรชันถัดไป');
 }
 
 function deleteMember(memberType, index, memberName) {
@@ -10314,28 +10695,30 @@ function deleteMember(memberType, index, memberName) {
                 loadAllMemberData();
                 
             } else {
-                alert('เกิดข้อผิดพลาด: ' + data.message);
+                showAlert('เกิดข้อผิดพลาด: ' + data.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            showAlert('เกิดข้อผิดพลาด: ' + error.message);
         })
         .deleteMemberData(memberType, index);
 }
 
 function showUserDetails(index) {
-    alert('ฟีเจอร์ดูรายละเอียดจะพัฒนาในเวรชันถัดไป');
+    console.log('Show user details:', index);
+    showAlert('ฟีเจอร์ดูรายละเอียดจะพัฒนาในเวรชันถัดไป');
 }
 
 function resetPassword(index) {
     if (confirm(' ต้องการรีเซ็ตรหัสผ่านใหม่หรือไม่?')) {
         const newPassword = Math.floor(1000 + Math.random() * 9000).toString();
-        alert('✅ รหัสผ่านใหม่: ' + newPassword + '\n กรุณาบันทึกและแจ้งให้ผู้ใช้ทราบ');
+        showAlert('✅ รหัสผ่านใหม่: ' + newPassword + '\n กรุณาบันทึกและแจ้งให้ผู้ใช้ทราบ');
     }
 }
 function addNewUser() {
-    alert('ฟีเจอร์เพิ่มผู้ใช้โดยตรงจะพัฒนาในเวรชันถัดไป');
+    console.log('Add new user directly');
+    showAlert('ฟีเจอร์เพิ่มผู้ใช้โดยตรงจะพัฒนาในเวรชันถัดไป');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -10397,6 +10780,7 @@ function filterCurrentTable(searchText) {
 }
 
 function handleImageError(imgElement, fileName) {
+    console.log('Image load error:', fileName);
     imgElement.style.display = 'none';
     
     const placeholder = document.createElement('div');
@@ -10411,6 +10795,7 @@ function handleImageError(imgElement, fileName) {
 }
 
 function handleVideoError(imgElement, fileName) {
+    console.log('Video thumbnail error:', fileName);
     
     const svgPlaceholder = 
         '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">' +
@@ -10424,6 +10809,7 @@ function handleVideoError(imgElement, fileName) {
 }
 
 function initializeComplete() {
+    console.log(' All JavaScript functions loaded successfully!');
 }
 
 if (document.readyState === 'loading') {
@@ -10643,8 +11029,10 @@ const thaiMonths = [
 ];
 
 function initializeMultiFilter() {
+    console.log(' Initializing Enhanced Multi-Filter System...');
     
     if (!originalTableData || originalTableData.length === 0) {
+        console.warn('⚠️ No data to initialize filters');
         return;
     }
     
@@ -10737,6 +11125,7 @@ function initializeMultiFilter() {
         populateFilterDropdown('yearlyReturnRangeFilter', counts.yearlyReturnRange, 'ทุกช่วงค่าต่างตอบแทนพิเศษ(ปี)')
         document.getElementById('peopleFilterRow').style.display = 'flex';
 
+        
         initializeColumnVisibilityFilter();
     }
     
@@ -10744,6 +11133,7 @@ function initializeMultiFilter() {
     
     filterCounts = counts;
     updateFilterResults();
+    
 
     const filterPanel = document.getElementById('filterPanel');
     if (filterPanel) {
@@ -10762,6 +11152,7 @@ function initializeMultiFilter() {
     
     isFilterPanelExpanded = false;
 
+    console.log('✅ Enhanced Multi-Filter initialized with counts:', counts);
 }
 
 function formatDateToThai(dateString) {
@@ -10803,6 +11194,7 @@ function formatDateToThai(dateString) {
         return month + '/' + year;
         
     } catch (error) {
+        console.warn('Error parsing date:', dateString, error);
         return null;
     }
 }
@@ -10843,6 +11235,7 @@ function populateDateFilterDropdown(selectId, counts, defaultText) {
 
 function initializeColumnVisibilityFilter() {
     if (document.getElementById('columnVisibilityRow')) {
+        console.log('Column visibility already exists');
         return;
     }
     const columnVisibilityHTML = `
@@ -10930,6 +11323,7 @@ function toggleColumnVisibility(columnIndex, isVisible) {
         hiddenColumns.add(columnIndex);
     }
     
+    console.log('Column', columnIndex, isVisible ? 'shown' : 'hidden');
 }
 
 function selectAllColumns() {
@@ -10996,6 +11390,7 @@ function getPrincipalRange(principal) {
 }
 
 function applyFilters() {
+    console.log(' Applying enhanced filters...');
     
     currentFilters = {
         status: document.getElementById('statusFilter').value,
@@ -11058,6 +11453,7 @@ function applyFilters() {
     updateActiveFilterCount();
     updateQuickFilterSummary();
     
+    console.log('✅ Enhanced filtered results:', filteredTableData.length, 'items');
 }
 
 function updateDataTable() {
@@ -11070,11 +11466,14 @@ function updateDataTable() {
         
         assetTable.draw();
         
+        console.log(' DataTable updated with', filteredTableData.length, 'rows');
     } catch (error) {
+        console.error('❌ Error updating DataTable:', error);
     }
 }
 
 function clearAllFilters() {
+    console.log(' Clearing all enhanced filters...');
     
     document.getElementById('statusFilter').value = '';
     document.getElementById('assetTypeFilter').value = '';
@@ -11120,6 +11519,7 @@ function clearAllFilters() {
         container.classList.remove('filter-animate');
     }, 300);
     
+    console.log('✅ All enhanced filters cleared');
 }
 
 function updateActiveFilterCount() {
@@ -11186,12 +11586,14 @@ function updateFilterResults() {
 let isFilterPanelExpanded = false;
 
 function toggleFilterPanel() {
+    console.log('️ Toggling filter panel...');
     
     const filterPanel = document.getElementById('filterPanel');
     const toggleIcon = document.getElementById('filterToggleIcon');
     const container = document.getElementById('multiFilterContainer');
     
     if (!filterPanel || !toggleIcon || !container) {
+        console.error('❌ Filter panel elements not found');
         return;
     }
     
@@ -11206,6 +11608,7 @@ function toggleFilterPanel() {
             updateQuickFilterSummary();
         }, 300);
         
+        console.log(' Filter panel collapsed');
     } else {
         toggleIcon.classList.add('rotated');
         container.classList.remove('collapsed');
@@ -11216,6 +11619,7 @@ function toggleFilterPanel() {
             quickSummary.style.display = 'none';
         }
         
+        console.log(' Filter panel expanded');
     }
     
     isFilterPanelExpanded = !isFilterPanelExpanded;
@@ -11263,6 +11667,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterPanel = document.getElementById('filterPanel');
     if (filterPanel) {
         filterPanel.addEventListener('shown.bs.collapse', function() {
+            console.log(' Filter panel shown');
             isFilterPanelExpanded = true;
             
             const toggleIcon = document.getElementById('filterToggleIcon');
@@ -11277,6 +11682,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         filterPanel.addEventListener('hidden.bs.collapse', function() {
+            console.log(' Filter panel hidden');
             isFilterPanelExpanded = false;
             
             const toggleIcon = document.getElementById('filterToggleIcon');
@@ -11361,9 +11767,11 @@ $('#example tbody').on('click', 'a.show-details', function (e) {
 });
 
 function editRow(rowNumber) {
+    console.log('=== EDIT ROW ===');
+    console.log('Editing row:', rowNumber);
     
     if (currentUserClass !== 'admin') {
-        alert('คุณไม่มีสิทธิ์ในการแก้ไขข้อมูล (เฉพาะ Admin เท่านั้น)');
+        showAlert('คุณไม่มีสิทธิ์ในการแก้ไขข้อมูล (เฉพาะ Admin เท่านั้น)');
         return;
     }
     
@@ -11390,20 +11798,21 @@ function editRow(rowNumber) {
                         document.getElementById('isEditMode').value = 'true';
                         assetModal.show();
                         
+                        console.log('✅ Edit mode opened successfully');
                     }, 500);
                     
                 } else {
                     hideProgress();
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
                 }
             } catch (e) {
                 hideProgress();
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
             }
         })
         .withFailureHandler(function(error) {
             hideProgress();
-            alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message);
         })
         .getRowDataForEdit(rowNumber);
 }
@@ -11421,6 +11830,7 @@ function cleanCommissionRate(value) {
 }
 
 function formatDateForInput(dateString) {
+    console.log(' Processing date:', dateString);
     
     if (!dateString) return '';
     
@@ -11429,14 +11839,18 @@ function formatDateForInput(dateString) {
             const date = new Date(dateString);
             
             if (isNaN(date.getTime())) {
+                console.error('❌ Invalid date object');
                 return '';
             }
             
             const day = date.getDate();
             const month = date.getMonth() + 1;
             let year = date.getFullYear();
-
+            
+            console.log(' Date parts (no conversion):', { day, month, year });
+            
             const result = day + '/' + month + '/' + year;
+            console.log('✅ Thai format result:', result);
             
             return result;
             
@@ -11448,6 +11862,7 @@ function formatDateForInput(dateString) {
         return '';
         
     } catch (error) {
+        console.error('❌ Error formatting date:', error);
         return '';
     }
 }
@@ -11464,10 +11879,12 @@ function findDateInput(fieldName) {
     for (const selector of selectors) {
         const element = document.querySelector(selector);
         if (element) {
+            console.log(`✅ Found ${fieldName} with selector:`, selector);
             return element;
         }
     }
     
+    console.error(`❌ Could not find input for ${fieldName}`);
     console.log('Available inputs:', Array.from(document.querySelectorAll('input')).map(inp => ({
         id: inp.id,
         name: inp.name,
@@ -11502,6 +11919,7 @@ function parseAndFillLandSize(landSizeText) {
 }
 
 function loadExistingThumbnails(folderIds) {
+    console.log('=== LOADING EXISTING THUMBNAILS ===');
     
     const thumbnailConfigs = [
         { folderId: folderIds.deedFolderId, containerId: 'deedPreview', label: 'รูปโฉนด' },
@@ -11534,10 +11952,12 @@ function loadThumbnailsToContainer(folderId, containerId, label) {
                     container.innerHTML = '<div class="no-files text-muted"><i class="bi bi-folder2-open"></i> ไม่มี' + label + '</div>';
                 }
             } catch (error) {
+                console.error('Error loading thumbnails:', error);
                 container.innerHTML = '<div class="error-files text-danger"><i class="bi bi-exclamation-triangle"></i> โหลด' + label + 'ไม่ได้</div>';
             }
         })
         .withFailureHandler(function(error) {
+            console.error('Failed to load thumbnails:', error);
             container.innerHTML = '<div class="error-files text-danger"><i class="bi bi-exclamation-triangle"></i> โหลด' + label + 'ไม่ได้</div>';
         })
         .getFolderFiles(folderId);
@@ -11581,14 +12001,19 @@ function displayThumbnailsInContainer(files, container, label) {
 }
 
 function displayPaymentHistoryWithDelete(paymentHistory, rowNumber) {
+    console.log('=== DISPLAY PAYMENT HISTORY WITH DELETE (SIMPLE) ===');
+    console.log('Payment history:', paymentHistory);
+    console.log('Row number:', rowNumber);
     
     const container = document.getElementById('savedPayments');
     if (!container) {
+        console.error('❌ savedPayments container not found');
         return;
     }
     
     if (!paymentHistory || paymentHistory.length === 0) {
         container.innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
+        console.log('ℹ️ No payment history to display');
         return;
     }
     
@@ -11614,21 +12039,26 @@ function displayPaymentHistoryWithDelete(paymentHistory, rowNumber) {
     
     container.innerHTML = html;
     
+    console.log('✅ Payment history with delete buttons displayed successfully');
 }
 
 function confirmDeletePayment(rowNumber, paymentRound, paymentIndex) {
+    console.log('=== CONFIRM DELETE PAYMENT (FIXED) ===');
+    console.log('Row:', rowNumber, 'Round:', paymentRound, 'Index:', paymentIndex);
     
     if (!confirm('❌ ต้องการลบการชำระครั้งที่ ' + paymentRound + ' หรือไม่?\n\n⚠️ การดำเนินการนี้ไม่สามารถยกเลิกได้')) {
         return;
     }
-
+    
+    console.log('️ Deleting payment without closing modal...');
+    
     google.script.run
         .withSuccessHandler(function(result) {
             try {
                 const data = JSON.parse(result);
                 
                 if (data.status === 'success') {
-                    alert('✅ ลบการชำระครั้งที่ ' + paymentRound + ' เรียบร้อยแล้ว');
+                    showAlert('✅ ลบการชำระครั้งที่ ' + paymentRound + ' เรียบร้อยแล้ว');
                     
                     if (data.updatedPaymentHistory && data.updatedPaymentHistory.length > 0) {
                         displayPaymentHistoryWithDelete(data.updatedPaymentHistory, rowNumber);
@@ -11637,19 +12067,21 @@ function confirmDeletePayment(rowNumber, paymentRound, paymentIndex) {
                     }
                     
                 } else {
-                    alert('เกิดข้อผิดพลาด: ' + data.message);
+                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
                 }
             } catch (e) {
-                alert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
+                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
             }
         })
         .withFailureHandler(function(error) {
-            alert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
+            showAlert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
         })
         .deletePaymentRecord(rowNumber, paymentRound);
 }
 
 function populateFormForEdit(rowData, folderIds) {
+    console.log('=== POPULATE FORM FOR EDIT (FIXED ERROR) ===');
+    console.log('Row data:', rowData);
     
     document.getElementById('rowNumber').value = rowData.rowNumber;
     document.getElementById('mainFolderId').value = folderIds.mainFolderId;
@@ -11674,10 +12106,12 @@ try {
         
         if (rowData.contractStartDate) {
             startDateFormatted = formatDateForInput(rowData.contractStartDate);
+            console.log(' Start date formatted:', startDateFormatted);
         }
         
         if (rowData.contractEndDate) {
             endDateFormatted = formatDateForInput(rowData.contractEndDate);
+            console.log(' End date formatted:', endDateFormatted);
         }
         
         const startDateInput = document.querySelector('input[name="contractStartDate"]');
@@ -11701,28 +12135,37 @@ try {
         if (startDateInput) {
             if (startDateInput.type === 'date') {
                 const isoFormat = convertThaiToISO(startDateFormatted);
+                console.log(' Converting for date input:', startDateFormatted, '→', isoFormat);
                 startDateInput.value = isoFormat;
             } else {
                 startDateInput.value = startDateFormatted;
             }
-
+            
+            console.log('✅ Start date set to:', startDateInput.value);
+            
             setTimeout(() => {
+                console.log(' Start date value after 100ms:', startDateInput.value);
             }, 100);
         }
         
         if (endDateInput) {
             if (endDateInput.type === 'date') {
                 const isoFormat = convertThaiToISO(endDateFormatted);
+                console.log(' Converting for date input:', endDateFormatted, '→', isoFormat);
                 endDateInput.value = isoFormat;
             } else {
                 endDateInput.value = endDateFormatted;
             }
-
+            
+            console.log('✅ End date set to:', endDateInput.value);
+            
             setTimeout(() => {
+                console.log(' End date value after 100ms:', endDateInput.value);
             }, 100);
         }
         
     } catch (dateError) {
+        console.error('❌ Error processing dates:', dateError);
     }
     
     document.querySelector('input[name="redemptionAmount"]').value = rowData.redemptionAmount || '';
@@ -11754,31 +12197,44 @@ try {
     setTimeout(() => {
         loadPaymentHistoryForEdit(rowData.rowNumber);
     }, 500);
-
+    
+    
 setTimeout(() => {
+    console.log(' Final check after 1 second:');
     const startInput = document.querySelector('input[name="contractStartDate"]');
     const endInput = document.querySelector('input[name="contractEndDate"]');
-
+    
+    console.log('Start input final value:', startInput?.value);
+    console.log('End input final value:', endInput?.value);
+    
     if (startInput && !startInput.value && startDateFormatted) {
+        console.log(' Retrying start date...');
         if (startInput.type === 'date') {
             startInput.value = convertThaiToISO(startDateFormatted);
         } else {
             startInput.value = startDateFormatted;
         }
+        console.log(' Start date retry result:', startInput.value);
     }
     
     if (endInput && !endInput.value && endDateFormatted) {
+        console.log(' Retrying end date...');
         if (endInput.type === 'date') {
             endInput.value = convertThaiToISO(endDateFormatted);
         } else {
             endInput.value = endDateFormatted;
         }
+        console.log(' End date retry result:', endInput.value);
     }
 }, 1000);
 
+    console.log('✅ Form populated successfully for edit mode');
+
+    
 }
 
 function disableFileUploadsInEditMode() {
+    console.log(' Hiding all file upload sections in edit mode...');
     
     const fileInputs = [
         { id: 'deedImages', label: 'รูปภาพโฉนด' },
@@ -11829,9 +12285,12 @@ function disableFileUploadsInEditMode() {
         }
     });
     
+    console.log('✅ All file upload sections hidden in edit mode');
 }
 
 function loadPaymentHistoryForEdit(rowNumber) {
+    console.log('=== LOAD PAYMENT HISTORY FOR EDIT ===');
+    console.log('Loading payment history for row:', rowNumber);
     
     google.script.run
         .withSuccessHandler(function(result) {
@@ -11839,17 +12298,21 @@ function loadPaymentHistoryForEdit(rowNumber) {
                 const data = JSON.parse(result);
                 
                 if (data.status === 'success') {
+                    console.log('✅ Payment history loaded:', data.payments);
                     
                     if (data.payments && data.payments.length > 0) {
                         displayPaymentHistoryWithDelete(data.payments, rowNumber);
+                        console.log('✅ Payment history displayed with delete buttons');
                     } else {
                         document.getElementById('savedPayments').innerHTML = 
                             '<div class="alert alert-secondary">' +
                             '<i class="bi bi-info-circle me-2"></i>' +
                             'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ' +
                             '</div>';
+                        console.log('ℹ️ No payment history found');
                     }
                 } else {
+                    console.error('❌ Error loading payment history:', data.message);
                     document.getElementById('savedPayments').innerHTML = 
                         '<div class="alert alert-danger">' +
                         '<i class="bi bi-exclamation-triangle me-2"></i>' +
@@ -11857,6 +12320,7 @@ function loadPaymentHistoryForEdit(rowNumber) {
                         '</div>';
                 }
             } catch (error) {
+                console.error('❌ Parse error:', error);
                 document.getElementById('savedPayments').innerHTML = 
                     '<div class="alert alert-danger">' +
                     '<i class="bi bi-exclamation-triangle me-2"></i>' +
@@ -11865,6 +12329,7 @@ function loadPaymentHistoryForEdit(rowNumber) {
             }
         })
         .withFailureHandler(function(error) {
+            console.error('❌ Failed to load payment history:', error);
             document.getElementById('savedPayments').innerHTML = 
                 '<div class="alert alert-danger">' +
                 '<i class="bi bi-exclamation-triangle me-2"></i>' +
@@ -11972,8 +12437,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function convertThaiToISO(thaiDate) {
+    console.log(' Converting Thai to ISO:', thaiDate);
     
     if (!thaiDate || !thaiDate.includes('/')) {
+        console.log('❌ Invalid Thai date format');
         return '';
     }
     
@@ -11981,28 +12448,37 @@ function convertThaiToISO(thaiDate) {
         const [day, month, year] = thaiDate.split('/').map(Number);
         
         if (!day || !month || !year) {
+            console.log('❌ Invalid date parts');
             return '';
         }
-
+        
+        
         const isoDate = year + '-' + 
                        String(month).padStart(2, '0') + '-' + 
                        String(day).padStart(2, '0');
         
+        console.log('✅ ISO date (Buddhist year):', isoDate);
         return isoDate;
         
     } catch (error) {
+        console.error('❌ Error converting to ISO:', error);
         return '';
     }
 }
 
 function debugSession() {
     const sessionKey = localStorage.getItem('userSessionKey');
+    console.log(' Current sessionKey in localStorage:', sessionKey);
+    console.log(' isLoggedIn:', isLoggedIn);
+    console.log(' currentUserClass:', currentUserClass);
     
     if (sessionKey) {
         google.script.run
             .withSuccessHandler(function(result) {
+                console.log(' Session test result:', result);
             })
             .withFailureHandler(function(error) {
+                console.log(' Session test error:', error);
             })
             .checkSession(sessionKey);
     }
@@ -12028,6 +12504,7 @@ async function loadTableWithRetry() {
       break;
       
     } catch (error) {
+      console.log(`Attempt ${i + 1} failed:`, error);
       
       if (i < 2) {
         await new Promise(resolve => setTimeout(resolve, (i + 1) * 2000));
@@ -12178,7 +12655,8 @@ async function loadTableWithRetry() {
         try {
           DICT_TH_EN = await loadDictionary();
         } catch(e){
-          alert('โหลด DICTIONARY ไม่ได้');
+          console.error(e);
+          showAlert('โหลด DICTIONARY ไม่ได้');
           return;
         }
         buildBothRegex();
