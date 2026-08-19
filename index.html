@@ -6087,6 +6087,7 @@ function exitUserSimulation() {
                 addLogoutButton();
                 
                 updateUserInterface('admin');
+                updateAdminOnlyElements('admin'); // ✅ ย้ายมาไว้ในนี้ ให้รันหลัง server ยืนยันสำเร็จแล้วเท่านั้น
                 
                 hideProgress();
                 
@@ -6118,8 +6119,6 @@ function exitUserSimulation() {
             showAlert('เกิดข้อผิดพลาดในการกลับสู่ Admin: ' + error.message);
         })
         .restoreAdminSession(currentSimulationKey);
-
-    updateAdminOnlyElements('admin');
 }
 
 function updateUserDisplayForSimulation(user) {
@@ -6320,7 +6319,15 @@ function clearLocalSession() {
     location.reload();
 }
 
+let eventListenersInitialized = false;
+
 function initializeEventListeners() {
+    if (eventListenersInitialized) {
+        console.log('⚠️ Event listeners initialized แล้ว ข้ามการผูกซ้ำ');
+        return;
+    }
+    eventListenersInitialized = true;
+
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
     
     document.getElementById('newAssetName').addEventListener('input', function() {
@@ -6338,49 +6345,49 @@ function initializeEventListeners() {
         }
     });
 
-document.getElementById('assetModal').addEventListener('hidden.bs.modal', function() {
-    console.log(' Modal hidden event triggered');
-    
-    if (this.dataset.processing === 'true') {
-        console.log('⚠️ Already processing, skipping');
-        return;
-    }
-    this.dataset.processing = 'true';
-    
-    const form = document.getElementById('assetForm');
-    const rowNumber = document.getElementById('rowNumber').value;
-    
-    const isCompleted = window.completedRows && window.completedRows.has(rowNumber);
-    
-    console.log(' Row:', rowNumber);
-    console.log(' Is completed?', isCompleted);
-    
-    if (!isCompleted) {
-        console.log('️ Data not completed, calling resetForm');
-        resetForm();
-    } else {
-        console.log('✅ Data was completed, cleaning form without delete');
-        form.reset();
-        form.classList.remove('was-validated');
-        form.removeAttribute('data-saved');
+    document.getElementById('assetModal').addEventListener('hidden.bs.modal', function() {
+        console.log(' Modal hidden event triggered');
         
-        document.querySelectorAll('.preview-container').forEach(container => {
-            container.innerHTML = '';
-        });
+        if (this.dataset.processing === 'true') {
+            console.log('⚠️ Already processing, skipping');
+            return;
+        }
+        this.dataset.processing = 'true';
         
-        autoCalc();
-        calculateLandSize();
-        updateSummary();
+        const form = document.getElementById('assetForm');
+        const rowNumber = document.getElementById('rowNumber').value;
         
-        document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
+        const isCompleted = window.completedRows && window.completedRows.has(rowNumber);
         
-        console.log('✅ Form cleaned without deleting data');
-    }
-    
-    setTimeout(() => {
-        this.dataset.processing = 'false';
-    }, 100);
-});
+        console.log(' Row:', rowNumber);
+        console.log(' Is completed?', isCompleted);
+        
+        if (!isCompleted) {
+            console.log('️ Data not completed, calling resetForm');
+            resetForm();
+        } else {
+            console.log('✅ Data was completed, cleaning form without delete');
+            form.reset();
+            form.classList.remove('was-validated');
+            form.removeAttribute('data-saved');
+            
+            document.querySelectorAll('.preview-container').forEach(container => {
+                container.innerHTML = '';
+            });
+            
+            autoCalc();
+            calculateLandSize();
+            updateSummary();
+            
+            document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
+            
+            console.log('✅ Form cleaned without deleting data');
+        }
+        
+        setTimeout(() => {
+            this.dataset.processing = 'false';
+        }, 100);
+    });
 
     document.getElementById('assetForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -12029,7 +12036,7 @@ function displayPaymentHistoryWithDelete(paymentHistory, rowNumber) {
         html += formattedAmount + ' บาท | ';
         html += payment.method;
         html += '</div>';
-        html += '<button class="btn btn-sm btn-outline-danger ms-2" ';
+        html += '<button type="button" class="btn btn-sm btn-outline-danger ms-2" ';
         html += 'onclick="confirmDeletePayment(\'' + rowNumber + '\', ' + payment.round + ', ' + index + ')" ';
         html += 'title="ลบการชำระครั้งที่ ' + payment.round + '">';
         html += '<i class="bi bi-trash3"></i>';
@@ -12445,19 +12452,24 @@ function convertThaiToISO(thaiDate) {
     }
     
     try {
-        const [day, month, year] = thaiDate.split('/').map(Number);
+        let [day, month, year] = thaiDate.split('/').map(Number);
         
         if (!day || !month || !year) {
             console.log('❌ Invalid date parts');
             return '';
         }
         
+        // ค่าที่เก็บในชีตเป็น พ.ศ. เสมอ ต้องลบ 543 ก่อนใส่ลง native date input
+        // เพราะ input type="date" ตามสเปคต้องรับเฉพาะปี ค.ศ. เท่านั้น
+        if (year > 2400) {
+            year = year - 543;
+        }
         
         const isoDate = year + '-' + 
                        String(month).padStart(2, '0') + '-' + 
                        String(day).padStart(2, '0');
         
-        console.log('✅ ISO date (Buddhist year):', isoDate);
+        console.log('✅ ISO date (Gregorian year):', isoDate);
         return isoDate;
         
     } catch (error) {
