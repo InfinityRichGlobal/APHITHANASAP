@@ -3946,11 +3946,25 @@ display: flex;
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <label class="form-label">วันที่เริ่มสัญญา</label>
-                                    <input type="date" class="form-control" name="contractStartDate">
+                                    <div class="thai-date-group" id="startDateGroup">
+    <div class="row g-1">
+        <div class="col-4"><select class="form-select form-select-sm thai-date-day"></select></div>
+        <div class="col-5"><select class="form-select form-select-sm thai-date-month"></select></div>
+        <div class="col-3"><select class="form-select form-select-sm thai-date-year"></select></div>
+    </div>
+    <input type="hidden" name="contractStartDate" class="thai-date-hidden">
+</div>
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <label class="form-label">วันที่สิ้นสุดสัญญา</label>
-                                    <input type="date" class="form-control" name="contractEndDate">
+                                   <div class="thai-date-group" id="endDateGroup">
+    <div class="row g-1">
+        <div class="col-4"><select class="form-select form-select-sm thai-date-day"></select></div>
+        <div class="col-5"><select class="form-select form-select-sm thai-date-month"></select></div>
+        <div class="col-3"><select class="form-select form-select-sm thai-date-year"></select></div>
+    </div>
+    <input type="hidden" name="contractEndDate" class="thai-date-hidden">
+</div>
                                 </div>
                             </div>
                             
@@ -4225,7 +4239,14 @@ display: flex;
                                 </div>
                                 <div class="col-md-3 mb-3">
                                     <label class="form-label">วันที่ชำระ</label>
-                                    <input type="date" class="form-control" id="paymentDate">
+                                    <div class="thai-date-group" id="paymentDateGroup">
+    <div class="row g-1">
+        <div class="col-4"><select class="form-select form-select-sm thai-date-day"></select></div>
+        <div class="col-5"><select class="form-select form-select-sm thai-date-month"></select></div>
+        <div class="col-3"><select class="form-select form-select-sm thai-date-year"></select></div>
+    </div>
+    <input type="hidden" id="paymentDate" class="thai-date-hidden">
+</div>
                                 </div>
                                 <div class="col-md-3 mb-3">
                                     <label class="form-label">จำนวนเงิน (บาท)</label>
@@ -6327,6 +6348,9 @@ function initializeEventListeners() {
         return;
     }
     eventListenersInitialized = true;
+  initThaiDateSelector('startDateGroup');
+initThaiDateSelector('endDateGroup');
+initThaiDateSelector('paymentDateGroup');
 
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
     
@@ -6879,9 +6903,7 @@ function calculateInterestDifference() {
     
     updateSummary();
 }
-
 function updateSummary() {
-    // helper: หา element ก่อน set กัน null (กันพังตอน element ยังไม่ render / ปิด modal)
     const setText = function(id, val) {
         const el = document.getElementById(id);
         if (el) el.textContent = val;
@@ -6893,8 +6915,10 @@ function updateSummary() {
 
     const principal = parseFloat((document.getElementById('principal')||{}).value) || 0;
     const redemption = parseFloat(getVal('input[name="redemptionAmount"]')) || 0;
-    const startDate = getVal('input[name="contractStartDate"]') || '-';
-    const endDate = getVal('input[name="contractEndDate"]') || '-';
+
+    const startDate = formatThaiDateForDisplay(getThaiDateSelectorValue('startDateGroup')) || '-';
+    const endDate = formatThaiDateForDisplay(getThaiDateSelectorValue('endDateGroup')) || '-';
+
     const brokerCommission = parseFloat((document.getElementById('brokerCommission')||{}).value) || 0;
     const ourCommission = parseFloat((document.getElementById('ourCommission')||{}).value) || 0;
     const interestDifference = parseFloat((document.getElementById('interestDifference')||{}).value) || 0;
@@ -9419,21 +9443,16 @@ function showPaymentHistory(rowNumber) {
 function savePayment() {
     const rowNumber = document.getElementById('rowNumber').value;
     const paymentRound = document.getElementById('paymentRound').value;
-    const paymentDate = document.getElementById('paymentDate').value;
+    const paymentDateThai = getThaiDateSelectorValue('paymentDateGroup');
     const paymentAmount = document.getElementById('paymentAmount').value;
     const paymentMethod = document.getElementById('paymentMethod').value;
     
-    if (!paymentRound || !paymentDate || !paymentAmount || !paymentMethod) {
+    if (!paymentRound || !paymentDateThai || !paymentAmount || !paymentMethod) {
         showAlert('กรุณากรอกข้อมูลให้ครบทุกช่อง');
         return;
     }
     
-    const date = new Date(paymentDate);
-    const thaiDate = date.toLocaleDateString('th-TH', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-    });
+    const thaiDate = formatThaiDateForDisplay(paymentDateThai);
     
     const paymentData = {
         date: thaiDate,
@@ -9450,11 +9469,10 @@ function savePayment() {
             
             if (data.status === 'success') {
                 showSuccessModal('สำเร็จ', 'บันทึกการชำระสำเร็จ');
-                
                 updateSavedPayments(paymentRound, paymentData);
                 
                 document.getElementById('paymentRound').value = '';
-                document.getElementById('paymentDate').value = '';
+                resetThaiDateSelector('paymentDateGroup');
                 document.getElementById('paymentAmount').value = '';
                 document.getElementById('paymentMethod').value = '';
             } else {
@@ -12087,8 +12105,7 @@ function confirmDeletePayment(rowNumber, paymentRound, paymentIndex) {
 }
 
 function populateFormForEdit(rowData, folderIds) {
-    console.log('=== POPULATE FORM FOR EDIT (FIXED ERROR) ===');
-    console.log('Row data:', rowData);
+    console.log('=== POPULATE FORM FOR EDIT (พ.ศ. ล้วน) ===');
     
     document.getElementById('rowNumber').value = rowData.rowNumber;
     document.getElementById('mainFolderId').value = folderIds.mainFolderId;
@@ -12107,70 +12124,12 @@ function populateFormForEdit(rowData, folderIds) {
     
     document.getElementById('tradingType').value = rowData.tradingType || '';
     
-try {
-        let startDateFormatted = '';
-        let endDateFormatted = '';
-        
-        if (rowData.contractStartDate) {
-            startDateFormatted = formatDateForInput(rowData.contractStartDate);
-            console.log(' Start date formatted:', startDateFormatted);
-        }
-        
-        if (rowData.contractEndDate) {
-            endDateFormatted = formatDateForInput(rowData.contractEndDate);
-            console.log(' End date formatted:', endDateFormatted);
-        }
-        
-        const startDateInput = document.querySelector('input[name="contractStartDate"]');
-        const endDateInput = document.querySelector('input[name="contractEndDate"]');
-        
-        console.log(' Input elements info:', {
-            startDateInput: {
-                found: !!startDateInput,
-                type: startDateInput?.type,
-                id: startDateInput?.id,
-                name: startDateInput?.name
-            },
-            endDateInput: {
-                found: !!endDateInput,
-                type: endDateInput?.type,
-                id: endDateInput?.id,
-                name: endDateInput?.name
-            }
-        });
-        
-        if (startDateInput) {
-            if (startDateInput.type === 'date') {
-                const isoFormat = convertThaiToISO(startDateFormatted);
-                console.log(' Converting for date input:', startDateFormatted, '→', isoFormat);
-                startDateInput.value = isoFormat;
-            } else {
-                startDateInput.value = startDateFormatted;
-            }
-            
-            console.log('✅ Start date set to:', startDateInput.value);
-            
-            setTimeout(() => {
-                console.log(' Start date value after 100ms:', startDateInput.value);
-            }, 100);
-        }
-        
-        if (endDateInput) {
-            if (endDateInput.type === 'date') {
-                const isoFormat = convertThaiToISO(endDateFormatted);
-                console.log(' Converting for date input:', endDateFormatted, '→', isoFormat);
-                endDateInput.value = isoFormat;
-            } else {
-                endDateInput.value = endDateFormatted;
-            }
-            
-            console.log('✅ End date set to:', endDateInput.value);
-            
-            setTimeout(() => {
-                console.log(' End date value after 100ms:', endDateInput.value);
-            }, 100);
-        }
-        
+    // วันที่เริ่ม/สิ้นสุดสัญญา — พ.ศ. ตรงจากชีต ไม่มีการแปลงค่าใดๆ
+    try {
+        const startDateThai = rowData.contractStartDate ? formatDateForInput(rowData.contractStartDate) : '';
+        const endDateThai = rowData.contractEndDate ? formatDateForInput(rowData.contractEndDate) : '';
+        setThaiDateSelectorValue('startDateGroup', startDateThai);
+        setThaiDateSelectorValue('endDateGroup', endDateThai);
     } catch (dateError) {
         console.error('❌ Error processing dates:', dateError);
     }
@@ -12205,39 +12164,7 @@ try {
         loadPaymentHistoryForEdit(rowData.rowNumber);
     }, 500);
     
-    
-setTimeout(() => {
-    console.log(' Final check after 1 second:');
-    const startInput = document.querySelector('input[name="contractStartDate"]');
-    const endInput = document.querySelector('input[name="contractEndDate"]');
-    
-    console.log('Start input final value:', startInput?.value);
-    console.log('End input final value:', endInput?.value);
-    
-    if (startInput && !startInput.value && startDateFormatted) {
-        console.log(' Retrying start date...');
-        if (startInput.type === 'date') {
-            startInput.value = convertThaiToISO(startDateFormatted);
-        } else {
-            startInput.value = startDateFormatted;
-        }
-        console.log(' Start date retry result:', startInput.value);
-    }
-    
-    if (endInput && !endInput.value && endDateFormatted) {
-        console.log(' Retrying end date...');
-        if (endInput.type === 'date') {
-            endInput.value = convertThaiToISO(endDateFormatted);
-        } else {
-            endInput.value = endDateFormatted;
-        }
-        console.log(' End date retry result:', endInput.value);
-    }
-}, 1000);
-
     console.log('✅ Form populated successfully for edit mode');
-
-    
 }
 
 function disableFileUploadsInEditMode() {
@@ -12443,40 +12370,6 @@ document.addEventListener('DOMContentLoaded', function() {
     addEditModeCSS();
 });
 
-function convertThaiToISO(thaiDate) {
-    console.log(' Converting Thai to ISO:', thaiDate);
-    
-    if (!thaiDate || !thaiDate.includes('/')) {
-        console.log('❌ Invalid Thai date format');
-        return '';
-    }
-    
-    try {
-        let [day, month, year] = thaiDate.split('/').map(Number);
-        
-        if (!day || !month || !year) {
-            console.log('❌ Invalid date parts');
-            return '';
-        }
-        
-        // ค่าที่เก็บในชีตเป็น พ.ศ. เสมอ ต้องลบ 543 ก่อนใส่ลง native date input
-        // เพราะ input type="date" ตามสเปคต้องรับเฉพาะปี ค.ศ. เท่านั้น
-        if (year > 2400) {
-            year = year - 543;
-        }
-        
-        const isoDate = year + '-' + 
-                       String(month).padStart(2, '0') + '-' + 
-                       String(day).padStart(2, '0');
-        
-        console.log('✅ ISO date (Gregorian year):', isoDate);
-        return isoDate;
-        
-    } catch (error) {
-        console.error('❌ Error converting to ISO:', error);
-        return '';
-    }
-}
 
 function debugSession() {
     const sessionKey = localStorage.getItem('userSessionKey');
@@ -12687,6 +12580,95 @@ async function loadTableWithRetry() {
 
   setToggleButton(false);
 })();
+
+  const THAI_DATE_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+                           'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+
+function initThaiDateSelector(groupId) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    const daySelect = group.querySelector('.thai-date-day');
+    const monthSelect = group.querySelector('.thai-date-month');
+    const yearSelect = group.querySelector('.thai-date-year');
+    const hiddenInput = group.querySelector('.thai-date-hidden');
+    if (!daySelect || !monthSelect || !yearSelect || !hiddenInput) return;
+
+    daySelect.innerHTML = '<option value="">วัน</option>';
+    for (let d = 1; d <= 31; d++) daySelect.innerHTML += '<option value="' + d + '">' + d + '</option>';
+
+    monthSelect.innerHTML = '<option value="">เดือน</option>';
+    THAI_DATE_MONTHS.forEach(function(m, idx) {
+        monthSelect.innerHTML += '<option value="' + (idx + 1) + '">' + m + '</option>';
+    });
+
+    const currentBEYear = new Date().getFullYear() + 543;
+    yearSelect.innerHTML = '<option value="">ปี พ.ศ.</option>';
+    for (let y = currentBEYear + 5; y >= currentBEYear - 15; y--) {
+        yearSelect.innerHTML += '<option value="' + y + '">' + y + '</option>';
+    }
+
+    function updateHidden() {
+        const d = daySelect.value, m = monthSelect.value, y = yearSelect.value;
+        hiddenInput.value = (d && m && y) ? (d + '/' + m + '/' + y) : '';
+        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    daySelect.addEventListener('change', updateHidden);
+    monthSelect.addEventListener('change', updateHidden);
+    yearSelect.addEventListener('change', updateHidden);
+}
+
+// รับ/เซ็ตเฉพาะสตริง "D/M/YYYY" ที่เป็น พ.ศ. อยู่แล้วเท่านั้น — ไม่มีการแปลงค่าใดๆ ทั้งสิ้น
+function setThaiDateSelectorValue(groupId, thaiDateString) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    const daySelect = group.querySelector('.thai-date-day');
+    const monthSelect = group.querySelector('.thai-date-month');
+    const yearSelect = group.querySelector('.thai-date-year');
+    const hiddenInput = group.querySelector('.thai-date-hidden');
+
+    if (!thaiDateString || !thaiDateString.includes('/')) {
+        daySelect.value = ''; monthSelect.value = ''; yearSelect.value = ''; hiddenInput.value = '';
+        return;
+    }
+
+    const parts = thaiDateString.split('/');
+    const day = parseInt(parts[0], 10) || '';
+    const month = parseInt(parts[1], 10) || '';
+    const year = parseInt(parts[2], 10) || '';
+
+    daySelect.value = day;
+    monthSelect.value = month;
+
+    if (year && !Array.from(yearSelect.options).some(opt => opt.value == year)) {
+        yearSelect.innerHTML += '<option value="' + year + '">' + year + '</option>';
+    }
+    yearSelect.value = year;
+
+    hiddenInput.value = (day && month && year) ? (day + '/' + month + '/' + year) : '';
+}
+
+function getThaiDateSelectorValue(groupId) {
+    const group = document.getElementById(groupId);
+    if (!group) return '';
+    const hiddenInput = group.querySelector('.thai-date-hidden');
+    return hiddenInput ? hiddenInput.value : '';
+}
+
+function resetThaiDateSelector(groupId) {
+    setThaiDateSelectorValue(groupId, '');
+}
+
+// จัดรูปข้อความอ่านง่าย "20 มกราคม 2569" — เป็นการจัดข้อความล้วนๆ ไม่มีการแปลงปีใดๆ
+function formatThaiDateForDisplay(thaiDateString) {
+    if (!thaiDateString || !thaiDateString.includes('/')) return '';
+    const parts = thaiDateString.split('/');
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+    if (!day || !month || !year) return '';
+    return day + ' ' + (THAI_DATE_MONTHS[month - 1] || '') + ' ' + year;
+}
 
 </script>
 
