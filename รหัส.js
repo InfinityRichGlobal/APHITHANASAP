@@ -107,35 +107,214 @@ function handleTelegramWebhook(e) {
   return HtmlService.createHtmlOutput('<h1>200 OK</h1>');
 }
 
+function escapeHtml(text) {
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function parseDateSmart(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    var y = val.getFullYear();
+    return new Date(y > 2500 ? y - 543 : y, val.getMonth(), val.getDate());
+  }
+  var str = String(val).trim();
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    var p = str.split('-');
+    var yr = parseInt(p[0], 10);
+    if (yr > 2500) yr -= 543;
+    return new Date(yr, parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+  }
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(str)) {
+    var parts = str.split('/');
+    var year = parseInt(parts[2], 10);
+    if (year > 2500) year -= 543;
+    return new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+  }
+  var parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    var y2 = parsed.getFullYear();
+    return new Date(y2 > 2500 ? y2 - 543 : y2, parsed.getMonth(), parsed.getDate());
+  }
+  return null;
+}
+
+function formatDateTh(d) {
+  if (!d) return '-';
+  var dateObj = (d instanceof Date) ? d : parseDateSmart(d);
+  if (!dateObj || isNaN(dateObj.getTime())) return '-';
+  var m = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return dateObj.getDate() + ' ' + m[dateObj.getMonth()] + ' ' + (dateObj.getFullYear() + 543).toString().slice(-2);
+}
+
+function getDaysLeft(d) {
+  var dateObj = (d instanceof Date) ? d : parseDateSmart(d);
+  if (!dateObj) return null;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var target = new Date(dateObj); target.setHours(0,0,0,0);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function getStatusEmoji(status) {
+  if (!status) return '⚪';
+  if (status.indexOf('ต่อดอก') !== -1) return '🔵';
+  if (status.indexOf('ดำเนินการอยู่') !== -1) return '🟢';
+  if (status.indexOf('ผ่อนผัน') !== -1) return '🟠';
+  if (status.indexOf('ไถ่ถอน') !== -1) return '⚪';
+  if (status.indexOf('ยึด') !== -1 || status.indexOf('หลุด') !== -1) return '🔴';
+  return '📁';
+}
+
+function readAssetsDetailed() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LINE.sheetData || 'DATABASE');
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    var assetName = r[1] ? String(r[1]).trim() : '';
+    var status = r[2] ? String(r[2]).trim() : '';
+    if (!assetName || !status) continue;
+
+    var start = parseDateSmart(r[12]);
+    var end = parseDateSmart(r[13]);
+    var principal = Number(r[15]) || 0;
+    var investorMonth = Number(r[26]) || 0;
+    var investorYear = Number(r[33]) || 0;
+    var interestMonth = Number(r[18]) || 0;
+    var redemptionAmount = Number(r[14]) || 0;
+
+    out.push({
+      row: i + 1,
+      rowNumber: r[0] || (i + 1),
+      name: assetName,
+      status: status,
+      assetType: r[4] ? String(r[4]).trim() : 'ไม่ระบุประเภท',
+      location: r[5] ? String(r[5]).trim() : 'ไม่ระบุทำเล',
+      deedType: r[6] ? String(r[6]).trim() : '',
+      landSize: r[7] ? String(r[7]).trim() : '',
+      ownerName: r[8] ? String(r[8]).trim() : 'ไม่ระบุเจ้าของ',
+      ownerPhone: r[9] ? String(r[9]).trim() : '',
+      ownerJob: r[10] ? String(r[10]).trim() : '',
+      tradingType: r[11] ? String(r[11]).trim() : 'ขายฝาก',
+      start: start,
+      end: end,
+      redemptionAmount: redemptionAmount,
+      principal: principal,
+      interestRate: r[16] || 0,
+      interestMonth: interestMonth,
+      investor: r[21] ? String(r[21]).trim() : 'ไม่ระบุนายทุน',
+      investorPhone: r[22] ? String(r[22]).trim() : '',
+      investorMonth: investorMonth,
+      investorYear: investorYear,
+      prepaid: Number(r[35]) || 0
+    });
+  }
+  return out;
+}
+
+function formatDetailedPlotCard(a, idx) {
+  var prefix = (idx !== undefined && idx !== null) ? '🏷️ <b>[' + (idx + 1) + '] ' + escapeHtml(a.name) + '</b>' : '🏷️ <b>' + escapeHtml(a.name) + '</b>';
+  var statusBadge = getStatusEmoji(a.status) + ' <b>' + escapeHtml(a.status) + '</b>';
+
+  var timeBadge = '';
+  if (a.end) {
+    var left = getDaysLeft(a.end);
+    if (left !== null) {
+      if (left < 0) {
+        timeBadge = '⚠️ <b>เกินกำหนดมาแล้ว: ' + Math.abs(left) + ' วัน</b>';
+      } else if (left === 0) {
+        timeBadge = '🚨 <b>ครบกำหนดสัญญา "วันนี้"</b>';
+      } else {
+        timeBadge = '⏳ <b>เหลือเวลาสัญญาอีก: ' + left + ' วัน</b>';
+      }
+    } else {
+      timeBadge = '⏳ ไม่ระบุวันครบกำหนด';
+    }
+  } else {
+    timeBadge = '⏳ ไม่ระบุวันครบกำหนด';
+  }
+
+  var ownerStr = escapeHtml(a.ownerName);
+  if (a.ownerPhone) ownerStr += ' (📞 ' + escapeHtml(a.ownerPhone) + ')';
+
+  var invStr = escapeHtml(a.investor);
+  if (a.investorPhone) invStr += ' (📞 ' + escapeHtml(a.investorPhone) + ')';
+
+  var locParts = [];
+  if (a.location && a.location !== 'ไม่ระบุทำเล') locParts.push(a.location);
+  if (a.landSize) locParts.push(a.landSize);
+  if (a.assetType && a.assetType !== 'ไม่ระบุประเภท') locParts.push(a.assetType);
+  var locText = locParts.length > 0 ? locParts.join(' | ') : 'ไม่ระบุทำเล';
+
+  var card = prefix + '\n' +
+             '   • 📌 <b>สถานะ:</b> ' + statusBadge + '\n' +
+             '   • 👤 <b>เจ้าของ:</b> ' + ownerStr + '\n' +
+             '   • 🤝 <b>นายทุน:</b> ' + invStr + '\n' +
+             '   • 📍 <b>ทำเล/ทรัพย์:</b> ' + escapeHtml(locText) + '\n' +
+             '   • 📝 <b>นิติกรรม:</b> ' + escapeHtml(a.tradingType) + '\n' +
+             '   • 💰 <b>เงินต้น:</b> ' + baht(a.principal) + ' บาท\n' +
+             '   • 💵 <b>ดอกนายทุน:</b> ' + baht(a.investorMonth) + ' บ./เดือน\n' +
+             '   • 📅 <b>สัญญา:</b> ' + formatDateTh(a.start) + ' ถึง ' + formatDateTh(a.end) + '\n' +
+             '   • ' + timeBadge;
+  return card;
+}
+
 function handleTelegramMessage(msg) {
   var text = String(msg.text || '').trim();
   var chatId = msg.chat && msg.chat.id;
   if (!chatId) return;
 
-  // เมนูหลัก /menu, /start, #menu, เมนู
-  if (text.indexOf('/menu') === 0 || text === '/start' || text === '#menu' || text === 'เมนู') {
+  var lower = text.toLowerCase();
+  var cmd = lower.split('@')[0].trim();
+
+  // 1. เมนูหลัก
+  if (cmd === '/menu' || cmd === '/start' || cmd === '#menu' || cmd === 'เมนู') {
     sendTelegramMenu(chatId);
     return;
   }
 
-  // คำสั่งลัดแบบพิมพ์
-  if (text === '/overdue' || text === '#overdue') {
+  // 2. ดูรายสถานะ
+  if (cmd === '/status' || cmd === '#status' || cmd === 'สถานะ' || cmd === 'ดูรายสถานะ') {
+    sendStatusMenu(chatId);
+    return;
+  }
+
+  // 3. ดูรายนายทุน
+  if (cmd === '/investor' || cmd === '/investors' || cmd === '#investor' || cmd === 'นายทุน' || cmd === 'ดูรายนายทุน') {
+    sendInvestorsReport(chatId);
+    return;
+  }
+
+  // 4. ดูรายเดือน
+  if (cmd === '/month' || cmd === '/monthly' || cmd === '#month' || cmd === 'เดือนนี้' || cmd === 'รายเดือน' || cmd === 'ดูรายเดือน') {
+    sendThisMonthReport(chatId);
+    return;
+  }
+
+  // 5. คำสั่งลัดอื่น ๆ
+  if (cmd === '/overdue' || cmd === '#overdue' || cmd === 'ค้างคา' || cmd === 'เกินกำหนด') {
     sendOverdueReport(chatId);
     return;
   }
-  if (text === '/neardue' || text === '#neardue') {
+  if (cmd === '/neardue' || cmd === '#neardue' || cmd === 'ใกล้ครบ' || cmd === 'ใกล้หมด') {
     sendNearDueReport(chatId);
     return;
   }
-  if (text === '/grace' || text === '#grace') {
+  if (cmd === '/grace' || cmd === '#grace' || cmd === 'ผ่อนผัน') {
     sendGraceReport(chatId);
     return;
   }
-  if (text === '/portfolio' || text === '#portfolio') {
+  if (cmd === '/portfolio' || cmd === '#portfolio' || cmd === 'พอร์ต' || cmd === 'สรุปพอร์ต') {
     sendPortfolioReport(chatId);
     return;
   }
-  if (text === '/test') {
+  if (cmd === '/test' || cmd === 'ทดสอบ') {
     sendTestReport(chatId);
     return;
   }
@@ -147,9 +326,27 @@ function handleTelegramCallback(cb) {
   var data = cb.data;
   if (!chatId) return;
 
-  answerTelegramCallback(cbId, 'กำลังดึงข้อมูล...');
+  answerTelegramCallback(cbId, 'กำลังประมวลผลข้อมูล...');
 
-  if (data === 'cmd_overdue') {
+  if (data === 'cmd_menu') {
+    sendTelegramMenu(chatId);
+  } else if (data === 'menu_status') {
+    sendStatusMenu(chatId);
+  } else if (data === 'view_st_active') {
+    sendStatusPlots(chatId, 'ดำเนินการอยู่');
+  } else if (data === 'view_st_ext') {
+    sendStatusPlots(chatId, 'ดำเนินการอยู่ (ต่อดอก)');
+  } else if (data === 'view_st_grace') {
+    sendStatusPlots(chatId, 'อยู่ระหว่างผ่อนผัน');
+  } else if (data === 'view_st_redeemed') {
+    sendStatusPlots(chatId, 'ไถ่ถอนแล้ว');
+  } else if (data === 'view_st_all_active') {
+    sendStatusPlots(chatId, 'active_all');
+  } else if (data === 'menu_investors') {
+    sendInvestorsReport(chatId);
+  } else if (data === 'cmd_this_month') {
+    sendThisMonthReport(chatId);
+  } else if (data === 'cmd_overdue') {
     sendOverdueReport(chatId);
   } else if (data === 'cmd_neardue') {
     sendNearDueReport(chatId);
@@ -159,27 +356,30 @@ function handleTelegramCallback(cb) {
     sendPortfolioReport(chatId);
   } else if (data === 'cmd_test') {
     sendTestReport(chatId);
-  } else if (data === 'cmd_menu') {
-    sendTelegramMenu(chatId);
   }
 }
 
 function sendTelegramMenu(chatId) {
-  var text = '🤖 <b>[APHITHANASAP BOT - เมนูสั่งการ]</b>\n\n' +
+  var text = '🤖 <b>[APHITHANASAP BOT - เมนูสั่งการ]</b>\n' +
+             '═══════════════════════\n' +
              'ระบบบริหารจัดการทรัพย์สินการลงทุน อสังหาริมทรัพย์\n' +
-             'กดปุ่มด้านล่างนี้เพื่อตรวจสอบข้อมูลได้ทันทีครับ:';
+             'กรุณาเลือกเมนูที่ต้องการตรวจสอบด้านล่างนี้ได้เลยครับ 👇';
   var keyboard = {
     inline_keyboard: [
       [
-        { text: '🔴 สัญญาเกินกำหนด / ค้างคา', callback_data: 'cmd_overdue' },
-        { text: '⏰ สัญญาใกล้ครบกำหนด', callback_data: 'cmd_neardue' }
+        { text: '📌 ดูรายสถานะแปลง', callback_data: 'menu_status' },
+        { text: '🤝 ดูรายนายทุน', callback_data: 'menu_investors' }
       ],
       [
-        { text: '⚠️ แปลงผ่อนผัน', callback_data: 'cmd_grace' },
-        { text: '📊 สรุปพอร์ตการลงทุน', callback_data: 'cmd_portfolio' }
+        { text: '🗓️ ดูรายเดือน (ครบกำหนดเดือนนี้)', callback_data: 'cmd_this_month' },
+        { text: '🔴 สัญญาเกินกำหนด / ค้างคา', callback_data: 'cmd_overdue' }
       ],
       [
-        { text: '🔔 ทดสอบการแจ้งเตือน', callback_data: 'cmd_test' }
+        { text: '⏰ สัญญาใกล้ครบ (60 วัน)', callback_data: 'cmd_neardue' },
+        { text: '📊 สรุปภาพรวมพอร์ต', callback_data: 'cmd_portfolio' }
+      ],
+      [
+        { text: '🔔 ทดสอบระบบแจ้งเตือน', callback_data: 'cmd_test' }
       ],
       [
         { text: '🌐 เข้าสู่ระบบจัดการทรัพย์สิน', url: (LINE.webUrl || 'https://infinityrichglobal.github.io/APHITHANASAP/') }
@@ -189,102 +389,466 @@ function sendTelegramMenu(chatId) {
   sendTelegramWithKeyboard(chatId, text, keyboard);
 }
 
-function sendOverdueReport(chatId) {
+function sendStatusMenu(chatId) {
   try {
-    var assets = readAssets();
-    var overdue = [];
+    var assets = readAssetsDetailed();
+    var stats = {};
+    var allActiveCount = 0;
+    var allActiveMoney = 0;
+
     assets.forEach(function(a) {
-      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
-        if (!a.end) return;
-        var left = daysLeft(a.end);
-        if (left < 0) overdue.push({ a: a, days: Math.abs(left) });
+      var st = a.status;
+      if (!stats[st]) stats[st] = { count: 0, principal: 0, invMonth: 0 };
+      stats[st].count++;
+      stats[st].principal += a.principal;
+      stats[st].invMonth += a.investorMonth;
+
+      if (st === 'ดำเนินการอยู่' || st === 'ดำเนินการอยู่ (ต่อดอก)' || st === 'อยู่ระหว่างผ่อนผัน') {
+        allActiveCount++;
+        allActiveMoney += a.principal;
       }
     });
 
-    var resp = '🔴 <b>[รายการสัญญาที่เกินกำหนด / ค้างคา]</b>\n\n';
-    if (overdue.length === 0) {
-      resp += '✅ ยอดเยี่ยมมากครับ! ตอนนี้ไม่มีสัญญาที่เกินกำหนดหรือค้างคาเลยครับ';
-    } else {
-      resp += 'พบทั้งหมด <b>' + overdue.length + '</b> แปลง:\n\n';
-      overdue.forEach(function(o, idx) {
-        resp += (idx + 1) + '. <b>' + o.a.name + '</b>\n' +
-                '   • เกินกำหนดมาแล้ว: <b>' + o.days + ' วัน</b>\n' +
-                '   • วันสิ้นสุดสัญญา: ' + fmtDate(o.a.end) + '\n' +
-                '   • เงินต้น: ' + baht(o.a.principal) + ' บาท\n' +
-                '   • นายทุน: ' + o.a.investor + '\n\n';
+    var stActive = stats['ดำเนินการอยู่'] || { count: 0, principal: 0 };
+    var stExt = stats['ดำเนินการอยู่ (ต่อดอก)'] || { count: 0, principal: 0 };
+    var stGrace = stats['อยู่ระหว่างผ่อนผัน'] || { count: 0, principal: 0 };
+    var stRedeemed = stats['ไถ่ถอนแล้ว'] || { count: 0, principal: 0 };
+    var stSeized = (stats['ยึดทรัพย์'] || { count: 0, principal: 0 }).count + (stats['หลุดเป็นกรรมสิทธิ์'] || { count: 0, principal: 0 }).count;
+
+    var text = '📌 <b>[สรุปพอร์ตแยกตามสถานะแปลง]</b>\n' +
+               '═══════════════════════\n' +
+               '📊 <b>ภาพรวมแปลงทั้งหมด:</b> ' + assets.length + ' แปลง\n' +
+               '💼 <b>แปลงที่กำลังดำเนินการ:</b> ' + allActiveCount + ' แปลง (' + baht(allActiveMoney) + ' บ.)\n\n' +
+               '🟢 <b>ดำเนินการอยู่:</b> ' + stActive.count + ' แปลง\n' +
+               '   └ ยอดเงินต้น: <b>' + baht(stActive.principal) + '</b> บาท\n\n' +
+               '🔵 <b>ดำเนินการอยู่ (ต่อดอก):</b> ' + stExt.count + ' แปลง\n' +
+               '   └ ยอดเงินต้น: <b>' + baht(stExt.principal) + '</b> บาท\n\n' +
+               '🟠 <b>อยู่ระหว่างผ่อนผัน:</b> ' + stGrace.count + ' แปลง\n' +
+               '   └ ยอดเงินต้น: <b>' + baht(stGrace.principal) + '</b> บาท\n\n' +
+               '⚪ <b>ไถ่ถอนแล้ว:</b> ' + stRedeemed.count + ' แปลง\n' +
+               '   └ ยอดเงินต้น: <b>' + baht(stRedeemed.principal) + '</b> บาท\n\n' +
+               (stSeized > 0 ? '🔴 <b>ยึดทรัพย์ / หลุดกรรมสิทธิ์:</b> ' + stSeized + ' แปลง\n\n' : '') +
+               '👇 <b>กดปุ่มด้านล่างเพื่อดูรายชื่อและรายละเอียดแต่ละแปลง:</b>';
+
+    var keyboard = {
+      inline_keyboard: [
+        [
+          { text: '🟢 ดำเนินการ (' + stActive.count + ')', callback_data: 'view_st_active' },
+          { text: '🔵 ต่อดอก (' + stExt.count + ')', callback_data: 'view_st_ext' }
+        ],
+        [
+          { text: '🟠 ผ่อนผัน (' + stGrace.count + ')', callback_data: 'view_st_grace' },
+          { text: '⚪ ไถ่ถอนแล้ว (' + stRedeemed.count + ')', callback_data: 'view_st_redeemed' }
+        ],
+        [
+          { text: '📋 ดูแปลงเปิดอยู่ทั้งหมด (' + allActiveCount + ' แปลง)', callback_data: 'view_st_all_active' }
+        ],
+        [
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendTelegramWithKeyboard(chatId, text, keyboard);
+  } catch (e) {
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลสถานะ: ' + e.toString());
+  }
+}
+
+function sendStatusPlots(chatId, filterType) {
+  try {
+    var assets = readAssetsDetailed();
+    var filtered = [];
+    var title = '';
+    var icon = '';
+
+    if (filterType === 'ดำเนินการอยู่') {
+      title = 'สถานะ: ดำเนินการอยู่';
+      icon = '🟢';
+      filtered = assets.filter(function(a) { return a.status === 'ดำเนินการอยู่'; });
+    } else if (filterType === 'ดำเนินการอยู่ (ต่อดอก)') {
+      title = 'สถานะ: ดำเนินการอยู่ (ต่อดอก)';
+      icon = '🔵';
+      filtered = assets.filter(function(a) { return a.status === 'ดำเนินการอยู่ (ต่อดอก)'; });
+    } else if (filterType === 'อยู่ระหว่างผ่อนผัน') {
+      title = 'สถานะ: อยู่ระหว่างผ่อนผัน';
+      icon = '🟠';
+      filtered = assets.filter(function(a) { return a.status === 'อยู่ระหว่างผ่อนผัน'; });
+    } else if (filterType === 'ไถ่ถอนแล้ว') {
+      title = 'สถานะ: ไถ่ถอนแล้ว';
+      icon = '⚪';
+      filtered = assets.filter(function(a) { return a.status === 'ไถ่ถอนแล้ว'; });
+    } else if (filterType === 'active_all') {
+      title = 'แปลงเปิดอยู่ทั้งหมด (ดำเนินการ / ต่อดอก / ผ่อนผัน)';
+      icon = '📋';
+      filtered = assets.filter(function(a) {
+        return a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน';
       });
     }
-    sendTelegramToChat(chatId, resp);
+
+    if (filtered.length === 0) {
+      var emptyText = icon + ' <b>[' + title + ']</b>\n\n' +
+                      '✅ ไม่พบรายการแปลงในสถานะนี้ครับ';
+      var kb = { inline_keyboard: [[ { text: '🔙 กลับเมนูสถานะ', callback_data: 'menu_status' } ]] };
+      sendTelegramWithKeyboard(chatId, emptyText, kb);
+      return;
+    }
+
+    var totalP = filtered.reduce(function(sum, a) { return sum + a.principal; }, 0);
+    var totalM = filtered.reduce(function(sum, a) { return sum + a.investorMonth; }, 0);
+
+    var head = icon + ' <b>[' + title + ']</b>\n' +
+               '═══════════════════════\n' +
+               '📊 <b>จำนวนทั้งหมด:</b> ' + filtered.length + ' แปลง\n' +
+               '💰 <b>ยอดเงินต้นรวม:</b> ' + baht(totalP) + ' บาท\n' +
+               '💵 <b>ผลตอบแทนรวม:</b> ' + baht(totalM) + ' บาท/เดือน\n' +
+               '───────────────────────\n\n';
+
+    var cards = [];
+    filtered.forEach(function(a, idx) {
+      cards.push(formatDetailedPlotCard(a, idx));
+    });
+
+    var fullText = head + cards.join('\n\n───────────────────────\n\n');
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '📌 เลือกดูสถานะอื่น', callback_data: 'menu_status' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, fullText, navKb);
   } catch (e) {
-    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.toString());
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการแสดงแปลง: ' + e.toString());
+  }
+}
+
+function sendInvestorsReport(chatId) {
+  try {
+    var assets = readAssetsDetailed();
+    var invMap = {};
+    var totalActivePrincipal = 0;
+    var totalActiveMonthly = 0;
+    var totalPlots = 0;
+
+    assets.forEach(function(a) {
+      var isActive = (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน');
+      if (!isActive) return;
+
+      var invName = a.investor || '(ไม่ระบุนายทุน)';
+      if (!invMap[invName]) {
+        invMap[invName] = {
+          name: invName,
+          phone: a.investorPhone || '',
+          principal: 0,
+          invMonth: 0,
+          invYear: 0,
+          plots: []
+        };
+      }
+      if (!invMap[invName].phone && a.investorPhone) {
+        invMap[invName].phone = a.investorPhone;
+      }
+      invMap[invName].principal += a.principal;
+      invMap[invName].invMonth += a.investorMonth;
+      invMap[invName].invYear += a.investorYear;
+      invMap[invName].plots.push(a);
+
+      totalActivePrincipal += a.principal;
+      totalActiveMonthly += a.investorMonth;
+      totalPlots++;
+    });
+
+    var invKeys = Object.keys(invMap);
+    if (invKeys.length === 0) {
+      var noInv = '🤝 <b>[รายงานพอร์ตการลงทุน - จำแนกตามรายนายทุน]</b>\n\n' +
+                  '✅ ขณะนี้ไม่มีแปลงที่กำลังดำเนินการอยู่ครับ';
+      var kb = { inline_keyboard: [[ { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' } ]] };
+      sendTelegramWithKeyboard(chatId, noInv, kb);
+      return;
+    }
+
+    invKeys.sort(function(x, y) {
+      return invMap[y].principal - invMap[x].principal;
+    });
+
+    var head = '🤝 <b>[รายงานพอร์ตการลงทุน - จำแนกตามรายนายทุน]</b>\n' +
+               '═══════════════════════\n' +
+               '💼 <b>นายทุนทั้งหมด:</b> ' + invKeys.length + ' ท่าน\n' +
+               '📁 <b>ทรัพย์ที่ดูแลรวม:</b> ' + totalPlots + ' แปลง\n' +
+               '💰 <b>ยอดเงินลงทุนรวม:</b> ' + baht(totalActivePrincipal) + ' บาท\n' +
+               '💵 <b>ผลตอบแทนรวม:</b> ' + baht(totalActiveMonthly) + ' บาท/เดือน\n' +
+               '───────────────────────\n\n';
+
+    var invSections = [];
+    invKeys.forEach(function(k, idx) {
+      var inv = invMap[k];
+      var invPhoneStr = inv.phone ? ' (📞 ' + escapeHtml(inv.phone) + ')' : '';
+
+      var section = '👤 <b>' + (idx + 1) + '. นายทุน: ' + escapeHtml(inv.name) + '</b>' + invPhoneStr + '\n' +
+                    '   💼 <b>จำนวนทรัพย์:</b> ' + inv.plots.length + ' แปลง\n' +
+                    '   💰 <b>เงินลงทุนรวม:</b> <b>' + baht(inv.principal) + '</b> บาท\n' +
+                    '   💵 <b>ผลตอบแทน:</b> ' + baht(inv.invMonth) + ' บ./เดือน\n\n' +
+                    '   📋 <b>รายชื่อแปลงที่ถือครอง:</b>\n';
+
+      inv.plots.forEach(function(p, pIdx) {
+        var ownerStr = escapeHtml(p.ownerName) + (p.ownerPhone ? ' (📞 ' + escapeHtml(p.ownerPhone) + ')' : '');
+        var stEmoji = getStatusEmoji(p.status);
+        var left = getDaysLeft(p.end);
+        var timeStr = '';
+        if (left !== null) {
+          timeStr = left < 0 ? ('⚠️ เกิน ' + Math.abs(left) + ' วัน') : ('เหลือ ' + left + ' วัน');
+        } else {
+          timeStr = 'ไม่ระบุวันสิ้นสุด';
+        }
+
+        section += '   ' + (pIdx + 1) + ') <b>' + escapeHtml(p.name) + '</b> ' + stEmoji + '\n' +
+                   '      • 👤 เจ้าของ: ' + ownerStr + '\n' +
+                   '      • 💰 เงินต้น: ' + baht(p.principal) + ' บ. (ดอก: ' + baht(p.investorMonth) + ' บ./ด.)\n' +
+                   '      • 📍 ทำเล: ' + escapeHtml(p.location || 'ไม่ระบุ') + '\n' +
+                   '      • 📅 สิ้นสุด: ' + formatDateTh(p.end) + ' (' + timeStr + ')\n';
+      });
+
+      invSections.push(section);
+    });
+
+    var fullText = head + invSections.join('\n───────────────────────\n\n');
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '📌 ดูตามสถานะแปลง', callback_data: 'menu_status' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, fullText, navKb);
+  } catch (e) {
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลรายนายทุน: ' + e.toString());
+  }
+}
+
+function sendThisMonthReport(chatId) {
+  try {
+    var assets = readAssetsDetailed();
+    var now = new Date();
+    var curMonth = now.getMonth();
+    var curYear = now.getFullYear();
+    var monthName = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+
+    var dueList = [];
+    assets.forEach(function(a) {
+      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน') {
+        if (!a.end) return;
+        var dEnd = new Date(a.end);
+        if (dEnd.getMonth() === curMonth && dEnd.getFullYear() === curYear) {
+          dueList.push(a);
+        }
+      }
+    });
+
+    dueList.sort(function(x, y) {
+      return (new Date(x.end)).getTime() - (new Date(y.end)).getTime();
+    });
+
+    if (dueList.length === 0) {
+      var noMsg = '🗓️ <b>[สัญญาครบกำหนด - ประจำเดือน ' + monthName + ']</b>\n\n' +
+                  '✅ ยอดเยี่ยมมากครับ! ในเดือนนี้ไม่มีสัญญาที่ครบกำหนดชำระหรือสิ้นสุดสัญญา';
+      var kb = { inline_keyboard: [[ { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' } ]] };
+      sendTelegramWithKeyboard(chatId, noMsg, kb);
+      return;
+    }
+
+    var totalP = dueList.reduce(function(sum, a) { return sum + a.principal; }, 0);
+    var totalM = dueList.reduce(function(sum, a) { return sum + a.investorMonth; }, 0);
+
+    var head = '🗓️ <b>[สัญญาครบกำหนด - ประจำเดือน ' + monthName + ']</b>\n' +
+               '═══════════════════════\n' +
+               '📊 <b>พบสัญญาครบกำหนดในเดือนนี้:</b> ' + dueList.length + ' แปลง\n' +
+               '💰 <b>ยอดเงินต้นรวม:</b> ' + baht(totalP) + ' บาท\n' +
+               '💵 <b>ยอดดอกเบี้ยรวม:</b> ' + baht(totalM) + ' บาท/เดือน\n' +
+               '───────────────────────\n\n';
+
+    var cards = [];
+    dueList.forEach(function(a, idx) {
+      cards.push(formatDetailedPlotCard(a, idx));
+    });
+
+    var fullText = head + cards.join('\n\n───────────────────────\n\n');
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '🔴 ดูสัญญาเกินกำหนด', callback_data: 'cmd_overdue' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, fullText, navKb);
+  } catch (e) {
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลประจำเดือน: ' + e.toString());
+  }
+}
+
+function sendOverdueReport(chatId) {
+  try {
+    var assets = readAssetsDetailed();
+    var overdue = [];
+    assets.forEach(function(a) {
+      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน') {
+        if (!a.end) return;
+        var left = getDaysLeft(a.end);
+        if (left !== null && left < 0) {
+          overdue.push({ a: a, days: Math.abs(left) });
+        }
+      }
+    });
+
+    if (overdue.length === 0) {
+      var noMsg = '🔴 <b>[รายการสัญญาที่เกินกำหนด / ค้างคา]</b>\n\n' +
+                  '✅ ยอดเยี่ยมมากครับ! ตอนนี้ไม่มีสัญญาที่เกินกำหนดหรือค้างคาเลยครับ';
+      var kb = { inline_keyboard: [[ { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' } ]] };
+      sendTelegramWithKeyboard(chatId, noMsg, kb);
+      return;
+    }
+
+    overdue.sort(function(x, y) { return y.days - x.days; });
+
+    var totalP = overdue.reduce(function(sum, item) { return sum + item.a.principal; }, 0);
+    var totalM = overdue.reduce(function(sum, item) { return sum + item.a.investorMonth; }, 0);
+
+    var head = '🔴 <b>[รายการสัญญาที่เกินกำหนด / ค้างคา]</b>\n' +
+               '═══════════════════════\n' +
+               '⚠️ <b>พบสัญญาเกินกำหนด:</b> ' + overdue.length + ' แปลง\n' +
+               '💰 <b>ยอดเงินต้นรวม:</b> ' + baht(totalP) + ' บาท\n' +
+               '💵 <b>ดอกนายทุนรวม:</b> ' + baht(totalM) + ' บาท/เดือน\n' +
+               '───────────────────────\n\n';
+
+    var cards = [];
+    overdue.forEach(function(o, idx) {
+      cards.push(formatDetailedPlotCard(o.a, idx));
+    });
+
+    var fullText = head + cards.join('\n\n───────────────────────\n\n');
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '📌 ดูรายสถานะ', callback_data: 'menu_status' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, fullText, navKb);
+  } catch (e) {
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลสัญญาเกินกำหนด: ' + e.toString());
   }
 }
 
 function sendNearDueReport(chatId) {
   try {
-    var assets = readAssets();
+    var assets = readAssetsDetailed();
     var nearDue = [];
     assets.forEach(function(a) {
-      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
+      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน') {
         if (!a.end) return;
-        var left = daysLeft(a.end);
-        if (left >= 0 && left <= 60) {
+        var left = getDaysLeft(a.end);
+        if (left !== null && left >= 0 && left <= 60) {
           nearDue.push({ a: a, days: left });
         }
       }
     });
+
+    if (nearDue.length === 0) {
+      var noMsg = '⏰ <b>[สัญญาใกล้ครบกำหนด (ภายใน 60 วัน)]</b>\n\n' +
+                  '✅ ไม่มีสัญญาที่จะครบกำหนดภายใน 60 วันนี้ครับ';
+      var kb = { inline_keyboard: [[ { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' } ]] };
+      sendTelegramWithKeyboard(chatId, noMsg, kb);
+      return;
+    }
+
     nearDue.sort(function(x, y) { return x.days - y.days; });
 
-    var resp = '⏰ <b>[รายการสัญญาใกล้ครบกำหนด (ภายใน 60 วัน)]</b>\n\n';
-    if (nearDue.length === 0) {
-      resp += '✅ ไม่มีสัญญาที่จะครบกำหนดภายใน 60 วันนี้ครับ';
-    } else {
-      resp += 'พบทั้งหมด <b>' + nearDue.length + '</b> แปลง:\n\n';
-      nearDue.forEach(function(n, idx) {
-        resp += (idx + 1) + '. <b>' + n.a.name + '</b>\n' +
-                '   • เหลือเวลาอีก: <b>' + n.days + ' วัน</b>\n' +
-                '   • วันสิ้นสุดสัญญา: ' + fmtDate(n.a.end) + '\n' +
-                '   • เงินต้น: ' + baht(n.a.principal) + ' บาท\n' +
-                '   • นายทุน: ' + n.a.investor + '\n\n';
-      });
-    }
-    sendTelegramToChat(chatId, resp);
+    var totalP = nearDue.reduce(function(sum, item) { return sum + item.a.principal; }, 0);
+    var totalM = nearDue.reduce(function(sum, item) { return sum + item.a.investorMonth; }, 0);
+
+    var head = '⏰ <b>[สัญญาใกล้ครบกำหนด (ภายใน 60 วัน)]</b>\n' +
+               '═══════════════════════\n' +
+               '🔔 <b>พบสัญญาใกล้ครบกำหนด:</b> ' + nearDue.length + ' แปลง\n' +
+               '💰 <b>ยอดเงินต้นรวม:</b> ' + baht(totalP) + ' บาท\n' +
+               '💵 <b>ดอกนายทุนรวม:</b> ' + baht(totalM) + ' บาท/เดือน\n' +
+               '───────────────────────\n\n';
+
+    var cards = [];
+    nearDue.forEach(function(n, idx) {
+      cards.push(formatDetailedPlotCard(n.a, idx));
+    });
+
+    var fullText = head + cards.join('\n\n───────────────────────\n\n');
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '🗓️ ดูสัญญาครบกำหนดเดือนนี้', callback_data: 'cmd_this_month' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, fullText, navKb);
   } catch (e) {
-    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.toString());
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลสัญญาใกล้ครบกำหนด: ' + e.toString());
   }
 }
 
 function sendGraceReport(chatId) {
   try {
-    var assets = readAssets();
-    var grace = [];
-    assets.forEach(function(a) {
-      if (a.status === 'อยู่ระหว่างผ่อนผัน') {
-        grace.push(a);
-      }
+    var assets = readAssetsDetailed();
+    var grace = assets.filter(function(a) { return a.status === 'อยู่ระหว่างผ่อนผัน'; });
+
+    if (grace.length === 0) {
+      var noMsg = '🟠 <b>[รายการแปลงที่อยู่ระหว่างผ่อนผัน]</b>\n\n' +
+                  '✅ ไม่มีแปลงที่อยู่ระหว่างผ่อนผันในขณะนี้ครับ';
+      var kb = { inline_keyboard: [[ { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' } ]] };
+      sendTelegramWithKeyboard(chatId, noMsg, kb);
+      return;
+    }
+
+    var totalP = grace.reduce(function(sum, a) { return sum + a.principal; }, 0);
+    var totalM = grace.reduce(function(sum, a) { return sum + a.investorMonth; }, 0);
+
+    var head = '🟠 <b>[รายการแปลงที่อยู่ระหว่างผ่อนผัน]</b>\n' +
+               '═══════════════════════\n' +
+               '⚠️ <b>พบแปลงอยู่ระหว่างผ่อนผัน:</b> ' + grace.length + ' แปลง\n' +
+               '💰 <b>ยอดเงินต้นรวม:</b> ' + baht(totalP) + ' บาท\n' +
+               '💵 <b>ดอกนายทุนรวม:</b> ' + baht(totalM) + ' บาท/เดือน\n' +
+               '───────────────────────\n\n';
+
+    var cards = [];
+    grace.forEach(function(g, idx) {
+      cards.push(formatDetailedPlotCard(g, idx));
     });
 
-    var resp = '⚠️ <b>[รายการแปลงที่อยู่ระหว่างผ่อนผัน]</b>\n\n';
-    if (grace.length === 0) {
-      resp += '✅ ไม่มีแปลงที่อยู่ระหว่างผ่อนผันในขณะนี้ครับ';
-    } else {
-      resp += 'พบทั้งหมด <b>' + grace.length + '</b> แปลง:\n\n';
-      grace.forEach(function(g, idx) {
-        resp += (idx + 1) + '. <b>' + g.name + '</b>\n' +
-                '   • ทุนรับซื้อ: ' + baht(g.principal) + ' บาท\n' +
-                '   • นายทุน: ' + g.investor + '\n' +
-                '   • ดอกนายทุน/เดือน: ' + baht(g.invMonth) + ' บาท\n\n';
-      });
-    }
-    sendTelegramToChat(chatId, resp);
+    var fullText = head + cards.join('\n\n───────────────────────\n\n');
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '📌 ดูรายสถานะ', callback_data: 'menu_status' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, fullText, navKb);
   } catch (e) {
-    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.toString());
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลแปลงผ่อนผัน: ' + e.toString());
   }
 }
 
 function sendPortfolioReport(chatId) {
   try {
-    var assets = readAssets();
+    var assets = readAssetsDetailed();
     var count = {}, principal = 0, invMonth = 0, invYear = 0;
     var dueInMonth = [];
     var now = new Date();
@@ -293,10 +857,10 @@ function sendPortfolioReport(chatId) {
 
     assets.forEach(function(a) {
       count[a.status] = (count[a.status] || 0) + 1;
-      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
+      if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน') {
         principal += a.principal;
-        invMonth += a.invMonth;
-        invYear += a.invYear;
+        invMonth += a.investorMonth;
+        invYear += a.investorYear;
 
         if (a.end) {
           var dEnd = new Date(a.end);
@@ -306,44 +870,120 @@ function sendPortfolioReport(chatId) {
         }
       }
     });
+
     var monthStr = now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
     var resp = '📊 <b>[สรุปพอร์ตการลงทุนแบบ Real-time]</b>\n' +
+               '═══════════════════════\n' +
                '🗓️ <b>ประจำเดือน:</b> ' + monthStr + '\n\n' +
                '📌 <b>สถานะทรัพย์สินทั้งหมด:</b>\n' +
-               '• ดำเนินการอยู่: ' + (count['ดำเนินการอยู่'] || 0) + ' แปลง\n' +
-               '• ดำเนินการอยู่ (ต่อดอก): ' + (count['ดำเนินการอยู่ (ต่อดอก)'] || 0) + ' แปลง\n' +
-               '• อยู่ระหว่างผ่อนผัน: ' + (count['อยู่ระหว่างผ่อนผัน'] || 0) + ' แปลง\n' +
-               '• ไถ่ถอนแล้ว: ' + (count['ไถ่ถอนแล้ว'] || 0) + ' แปลง\n' +
-               '• หลุดเป็นกรรมสิทธิ์: ' + (count['หลุดเป็นกรรมสิทธิ์'] || 0) + ' แปลง\n\n' +
-               '💰 <b>สรุปยอดการเงินพอร์ต:</b>\n' +
+               '• 🟢 ดำเนินการอยู่: ' + (count['ดำเนินการอยู่'] || 0) + ' แปลง\n' +
+               '• 🔵 ดำเนินการอยู่ (ต่อดอก): ' + (count['ดำเนินการอยู่ (ต่อดอก)'] || 0) + ' แปลง\n' +
+               '• 🟠 อยู่ระหว่างผ่อนผัน: ' + (count['อยู่ระหว่างผ่อนผัน'] || 0) + ' แปลง\n' +
+               '• ⚪ ไถ่ถอนแล้ว: ' + (count['ไถ่ถอนแล้ว'] || 0) + ' แปลง\n' +
+               '• 🔴 หลุดเป็นกรรมสิทธิ์/ยึดทรัพย์: ' + ((count['หลุดเป็นกรรมสิทธิ์'] || 0) + (count['ยึดทรัพย์'] || 0)) + ' แปลง\n\n' +
+               '💰 <b>สรุปยอดการเงินพอร์ตที่กำลังดำเนินการ:</b>\n' +
                '• เงินต้นรวม: <b>' + baht(principal) + '</b> บาท\n' +
-               '• ดอกเบี้ยนายทุน/เดือน: <b>' + baht(invMonth) + '</b> บาท\n' +
-               '• ดอกเบี้ยนายทุน/ปี: <b>' + baht(invYear) + '</b> บาท\n\n';
+               '• ผลตอบแทนนายทุน/เดือน: <b>' + baht(invMonth) + '</b> บาท\n' +
+               '• ผลตอบแทนนายทุน/ปี: <b>' + baht(invYear) + '</b> บาท\n';
+
     if (dueInMonth.length > 0) {
-      resp += '⏰ <b>แปลงที่ครบกำหนดในเดือนนี้ (' + dueInMonth.length + ' แปลง):</b>\n';
-      dueInMonth.forEach(function(d) {
-        resp += '• <b>' + d.name + ':</b> สิ้นสุด ' + fmtDate(d.end) + ' (เงินต้น: ' + baht(d.principal) + ' บ.)\n';
+      resp += '\n⏰ <b>แปลงที่ครบกำหนดในเดือนนี้ (' + dueInMonth.length + ' แปลง):</b>\n';
+      dueInMonth.forEach(function(d, idx) {
+        var oStr = d.ownerName ? (' (เจ้าของ: ' + d.ownerName + ')') : '';
+        resp += (idx + 1) + '. <b>' + escapeHtml(d.name) + '</b>' + escapeHtml(oStr) + '\n' +
+                '   └ สิ้นสุด: ' + formatDateTh(d.end) + ' | เงินต้น: ' + baht(d.principal) + ' บ.\n';
       });
-      resp += '\n';
     }
-    resp += '🌐 <a href="' + (LINE.webUrl || 'https://infinityrichglobal.github.io/APHITHANASAP/') + '">เปิดเข้าระบบจัดการทรัพย์สิน</a>';
-    sendTelegramToChat(chatId, resp);
+
+    var navKb = {
+      inline_keyboard: [
+        [
+          { text: '📌 ดูรายสถานะ', callback_data: 'menu_status' },
+          { text: '🤝 ดูรายนายทุน', callback_data: 'menu_investors' }
+        ],
+        [
+          { text: '🗓️ ดูรายเดือนนี้', callback_data: 'cmd_this_month' },
+          { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+        ]
+      ]
+    };
+
+    sendLongTelegramMessage(chatId, resp, navKb);
   } catch (e) {
-    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล: ' + e.toString());
+    sendTelegramToChat(chatId, '⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลภาพรวมพอร์ต: ' + e.toString());
   }
 }
 
 function sendTestReport(chatId) {
-  var testMsg = '🔔 <b>[ทดสอบระบบแจ้งเตือน APHITHANASAP]</b>\n\n' +
+  var testMsg = '🔔 <b>[ทดสอบระบบแจ้งเตือน APHITHANASAP]</b>\n' +
+                '═══════════════════════\n' +
                 '✅ ระบบเชื่อมต่อ Telegram Webhook และ API ทำงานปกติ 100%\n' +
                 '🕒 <b>เวลาทดสอบ:</b> ' + getThaiDateTimeStr() + '\n\n' +
-                '🛡️ <b>ระบบความปลอดภัยที่ทำงานอยู่:</b>\n' +
-                '• ตรวจจับการล็อกอิน (สำเร็จ/ล้มเหลว)\n' +
-                '• เปรียบเทียบข้อมูลก่อน-หลังแก้ไข (Diff Tracking)\n' +
-                '• สำรองข้อมูลแปลงก่อนถูกลบทันที (Backup Snapshot)\n' +
-                '• แจ้งเตือนการเงิน (บันทึกรับชำระ/ลบยอดชำระ)\n' +
-                '• สรุปอัตโนมัติ ทุกวันจันทร์ (08:00 น.) และ ทุกต้นเดือน (09:00 น.)';
-  sendTelegramToChat(chatId, testMsg);
+                '🛡️ <b>ระบบความปลอดภัยและฟีเจอร์ที่เปิดใช้งาน:</b>\n' +
+                '• 📌 เมนูดูรายสถานะแปลงแบบ Interactive\n' +
+                '• 🤝 เมนูดูรายนายทุน ยอดเงิน จำนวน และรายชื่อแปลง\n' +
+                '• 🗓️ เมนูดูสัญญาครบกำหนดประจำเดือน\n' +
+                '• 🔴 ตรวจสอบสัญญาเกินกำหนด / ค้างคา\n' +
+                '• ⏰ ตรวจสอบสัญญาใกล้ครบกำหนด 60 วัน\n' +
+                '• 🔐 ตรวจจับการล็อกอินแอดมิน (สำเร็จ/ล้มเหลว)\n' +
+                '• 📝 เปรียบเทียบข้อมูลก่อน-หลังแก้ไข (Diff Tracking)\n' +
+                '• 💾 สำรองข้อมูลแปลงก่อนถูกลบทันที (Backup Snapshot)\n' +
+                '• 💰 แจ้งเตือนการเงิน (บันทึกรับชำระ/ลบยอดชำระ)\n' +
+                '• 📅 สรุปอัตโนมัติ ทุกวันจันทร์ (08:00 น.) และ ทุกต้นเดือน (09:00 น.)';
+
+  var navKb = {
+    inline_keyboard: [
+      [
+        { text: '🔙 กลับเมนูหลัก', callback_data: 'cmd_menu' }
+      ]
+    ]
+  };
+  sendTelegramWithKeyboard(chatId, testMsg, navKb);
+}
+
+function sendLongTelegramMessage(chatId, htmlText, keyboardObj) {
+  var MAX_LEN = 3800;
+  if (!htmlText || htmlText.length <= MAX_LEN) {
+    if (keyboardObj) {
+      sendTelegramWithKeyboard(chatId, htmlText, keyboardObj);
+    } else {
+      sendTelegramToChat(chatId, htmlText);
+    }
+    return;
+  }
+
+  var sep = '\n\n───────────────────────\n\n';
+  var pieces;
+  if (htmlText.indexOf(sep) !== -1) {
+    pieces = htmlText.split(sep);
+  } else {
+    pieces = htmlText.split('\n\n');
+  }
+
+  var chunks = [];
+  var cur = '';
+
+  for (var i = 0; i < pieces.length; i++) {
+    var piece = pieces[i];
+    var candidate = cur ? (cur + sep + piece) : piece;
+    if (candidate.length > MAX_LEN) {
+      if (cur) chunks.push(cur);
+      cur = piece;
+    } else {
+      cur = candidate;
+    }
+  }
+  if (cur) chunks.push(cur);
+
+  for (var j = 0; j < chunks.length; j++) {
+    var isLast = (j === chunks.length - 1);
+    if (isLast && keyboardObj) {
+      sendTelegramWithKeyboard(chatId, chunks[j], keyboardObj);
+    } else {
+      sendTelegramToChat(chatId, chunks[j]);
+    }
+    Utilities.sleep(350);
+  }
 }
 
 function sendTelegramToChat(chatId, htmlText) {
