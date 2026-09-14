@@ -1,0 +1,17 @@
+{
+  "name": "aphithanasap",
+  "version": "1.0.0",
+  "description": "APHITHANASAP - Real Estate Investment Management System",
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "status": "clasp status",
+    "deploy": "clasp deploy",
+    "deployments": "clasp deployments",
+    "open": "clasp open-script",
+    "logs": "clasp logs"
+  },
+  "devDependencies": {
+    "@google/clasp": "^3.4.1"
+  }
+}
