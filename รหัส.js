@@ -240,9 +240,6 @@ function formatDetailedPlotCard(a, idx) {
     timeBadge = '⏳ ไม่ระบุวันครบกำหนด';
   }
 
-  var ownerStr = escapeHtml(a.ownerName);
-  if (a.ownerPhone) ownerStr += ' (📞 ' + escapeHtml(a.ownerPhone) + ')';
-
   var invStr = escapeHtml(a.investor);
   if (a.investorPhone) invStr += ' (📞 ' + escapeHtml(a.investorPhone) + ')';
 
@@ -254,13 +251,12 @@ function formatDetailedPlotCard(a, idx) {
 
   var card = prefix + '\n' +
              '   • 📌 <b>สถานะ:</b> ' + statusBadge + '\n' +
-             '   • 👤 <b>เจ้าของ:</b> ' + ownerStr + '\n' +
              '   • 🤝 <b>นายทุน:</b> ' + invStr + '\n' +
              '   • 📍 <b>ทำเล/ทรัพย์:</b> ' + escapeHtml(locText) + '\n' +
              '   • 📝 <b>นิติกรรม:</b> ' + escapeHtml(a.tradingType) + '\n' +
              '   • 💰 <b>เงินต้น:</b> ' + baht(a.principal) + ' บาท\n' +
              '   • 💵 <b>ดอกนายทุน:</b> ' + baht(a.investorMonth) + ' บ./เดือน\n' +
-             '   • 📅 <b>สัญญา:</b> ' + formatDateTh(a.start) + ' ถึง ' + formatDateTh(a.end) + '\n' +
+             '   • 📅 <b>ระยะเวลาสัญญา:</b> ' + formatDateTh(a.start) + ' ถึง ' + formatDateTh(a.end) + '\n' +
              '   • ' + timeBadge;
   return card;
 }
@@ -594,7 +590,6 @@ function sendInvestorsReport(chatId) {
                     '   📋 <b>รายชื่อแปลงที่ถือครอง:</b>\n';
 
       inv.plots.forEach(function(p, pIdx) {
-        var ownerStr = escapeHtml(p.ownerName) + (p.ownerPhone ? ' (📞 ' + escapeHtml(p.ownerPhone) + ')' : '');
         var stEmoji = getStatusEmoji(p.status);
         var left = getDaysLeft(p.end);
         var timeStr = '';
@@ -605,10 +600,9 @@ function sendInvestorsReport(chatId) {
         }
 
         section += '   ' + (pIdx + 1) + ') <b>' + escapeHtml(p.name) + '</b> ' + stEmoji + '\n' +
-                   '      • 👤 เจ้าของ: ' + ownerStr + '\n' +
                    '      • 💰 เงินต้น: ' + baht(p.principal) + ' บ. (ดอก: ' + baht(p.investorMonth) + ' บ./ด.)\n' +
                    '      • 📍 ทำเล: ' + escapeHtml(p.location || 'ไม่ระบุ') + '\n' +
-                   '      • 📅 สิ้นสุด: ' + formatDateTh(p.end) + ' (' + timeStr + ')\n';
+                   '      • 📅 สัญญา: ' + formatDateTh(p.start) + ' ถึง ' + formatDateTh(p.end) + ' (' + timeStr + ')\n';
       });
 
       invSections.push(section);
@@ -889,9 +883,10 @@ function sendPortfolioReport(chatId) {
     if (dueInMonth.length > 0) {
       resp += '\n⏰ <b>แปลงที่ครบกำหนดในเดือนนี้ (' + dueInMonth.length + ' แปลง):</b>\n';
       dueInMonth.forEach(function(d, idx) {
-        var oStr = d.ownerName ? (' (เจ้าของ: ' + d.ownerName + ')') : '';
-        resp += (idx + 1) + '. <b>' + escapeHtml(d.name) + '</b>' + escapeHtml(oStr) + '\n' +
-                '   └ สิ้นสุด: ' + formatDateTh(d.end) + ' | เงินต้น: ' + baht(d.principal) + ' บ.\n';
+        var invStr = d.investor ? (' (นายทุน: ' + d.investor + ')') : '';
+        var dateStr = 'สัญญา: ' + formatDateTh(d.start) + ' ถึง ' + formatDateTh(d.end);
+        resp += (idx + 1) + '. <b>' + escapeHtml(d.name) + '</b>' + escapeHtml(invStr) + '\n' +
+                '   └ ' + dateStr + ' | เงินต้น: ' + baht(d.principal) + ' บ.\n';
       });
     }
 
@@ -5548,24 +5543,33 @@ function sendWeeklyTelegramAlert(nearDue, overdue, grace) {
               
     if (overdue && overdue.length > 0) {
       msg += '🔴 <b>สัญญาที่เกินกำหนด/ค้างคา (' + overdue.length + ' แปลง):</b>\n';
-      overdue.forEach(function(o) {
-        msg += '• <b>' + o.a.name + ':</b> เกินกำหนดมาแล้ว ' + o.days + ' วัน (สิ้นสุด: ' + fmtDate(o.a.end) + ')\n';
+      overdue.forEach(function(o, idx) {
+        var invStr = o.a.investor ? (' (นายทุน: ' + o.a.investor + ')') : '';
+        var dateStr = 'สัญญา: ' + fmtDate(o.a.start) + ' ถึง ' + fmtDate(o.a.end);
+        msg += (idx + 1) + '. <b>' + o.a.name + '</b>' + invStr + '\n' +
+               '   └ ' + dateStr + ' | ⚠️ เกินมา ' + o.days + ' วัน (เงินต้น: ' + baht(o.a.principal) + ' บ.)\n';
       });
       msg += '\n';
     }
     
     if (nearDue && nearDue.length > 0) {
       msg += '⏰ <b>สัญญาใกล้ครบกำหนด (' + nearDue.length + ' แปลง):</b>\n';
-      nearDue.forEach(function(n) {
-        msg += '• <b>' + n.a.name + ':</b> เหลืออีก ' + n.days + ' วัน (สิ้นสุด: ' + fmtDate(n.a.end) + ')\n';
+      nearDue.forEach(function(n, idx) {
+        var invStr = n.a.investor ? (' (นายทุน: ' + n.a.investor + ')') : '';
+        var dateStr = 'สัญญา: ' + fmtDate(n.a.start) + ' ถึง ' + fmtDate(n.a.end);
+        msg += (idx + 1) + '. <b>' + n.a.name + '</b>' + invStr + '\n' +
+               '   └ ' + dateStr + ' | ⏳ เหลืออีก ' + n.days + ' วัน (เงินต้น: ' + baht(n.a.principal) + ' บ.)\n';
       });
       msg += '\n';
     }
     
     if (grace && grace.length > 0) {
       msg += '⚠️ <b>อยู่ระหว่างผ่อนผัน (' + grace.length + ' แปลง):</b>\n';
-      grace.forEach(function(g) {
-        msg += '• <b>' + g.a.name + '</b> (ทุนรับซื้อ: ' + baht(g.a.principal) + ' บ.)\n';
+      grace.forEach(function(g, idx) {
+        var invStr = g.a.investor ? (' (นายทุน: ' + g.a.investor + ')') : '';
+        var dateStr = 'สัญญา: ' + fmtDate(g.a.start) + ' ถึง ' + fmtDate(g.a.end);
+        msg += (idx + 1) + '. <b>' + g.a.name + '</b>' + invStr + '\n' +
+               '   └ ' + dateStr + ' | ทุนรับซื้อ: ' + baht(g.a.principal) + ' บ.\n';
       });
       msg += '\n';
     }
@@ -5599,8 +5603,11 @@ function sendMonthlyTelegramSummary(count, principal, invMonth, invYear, dueInMo
               
     if (dueInMonth && dueInMonth.length > 0) {
       msg += '⏰ <b>แปลงที่ครบกำหนดในเดือนนี้ (' + dueInMonth.length + ' แปลง):</b>\n';
-      dueInMonth.forEach(function(d) {
-        msg += '• <b>' + d.name + ':</b> สิ้นสุด ' + fmtDate(d.end) + ' (เงินต้น: ' + baht(d.principal) + ' บ.)\n';
+      dueInMonth.forEach(function(d, idx) {
+        var invStr = d.investor ? (' (นายทุน: ' + d.investor + ')') : '';
+        var dateStr = 'สัญญา: ' + fmtDate(d.start) + ' ถึง ' + fmtDate(d.end);
+        msg += (idx + 1) + '. <b>' + d.name + '</b>' + invStr + '\n' +
+               '   └ ' + dateStr + ' | เงินต้น: ' + baht(d.principal) + ' บ.\n';
       });
       msg += '\n';
     }
