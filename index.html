@@ -5570,9 +5570,11 @@ function loadInitialAppData(sessionKey, userInfo) {
             try {
                 const res = (typeof result === 'string') ? JSON.parse(result) : result;
                 if (res.status === 'success') {
-                    if (res.user) {
+                    if (res.user && res.user.isSimulation) {
+                        // In simulation mode - already handled
+                    } else if (res.user && !isSimulatingUser) {
                         updateUserDisplay(res.user);
-                    } else if (userInfo) {
+                    } else if (userInfo && !isSimulatingUser) {
                         updateUserDisplay(userInfo);
                     }
                     if (res.table) {
@@ -5638,7 +5640,16 @@ function checkUserSession() {
                     console.log('✅ Valid session for user:', response.user.username);
                     isLoggedIn = true;
                     showMainApp();
-                    updateUserDisplay(response.user);
+                    
+                    if (response.user.isSimulation && response.user.adminBackup) {
+                        originalAdminData = response.user.adminBackup.originalAdmin;
+                        isSimulatingUser = true;
+                        currentUser = response.user.username;
+                        currentUserClass = response.user.class;
+                        updateUserDisplayForSimulation(response.user);
+                    } else {
+                        updateUserDisplay(response.user);
+                    }
                     
                     // ✅ ใช้ loadInitialAppData รวมดึงข้อมูลทุกอย่างในคำสั่งเดียว
                     loadInitialAppData(sessionKey, response.user);
@@ -5799,6 +5810,19 @@ function hideLoginError() {
 }
 
 function updateUserDisplay(user) {
+    if (!user) return;
+    
+    currentUser = user.username;
+    currentUserClass = user.class;
+    
+    if (user.class === 'admin' && !user.isSimulation) {
+        originalAdminData = {
+            username: user.username,
+            class: user.class,
+            isSimulating: false
+        };
+    }
+    
     const userInfo = document.getElementById('currentUser');
     if (userInfo) {
         let userDisplay = '';
@@ -5824,10 +5848,8 @@ function updateUserDisplay(user) {
         userInfo.textContent = userDisplay;
     }
     
-    currentUserClass = user.class;
     updateUserInterface(user.class);
     addLogoutButton();
-
 }
 
 function addLogoutButton() {
@@ -5852,6 +5874,8 @@ function addLogoutButton() {
     }
 }
 
+let currentUser = '';
+let currentUserClass = '';
 let originalAdminData = null;
 let isSimulatingUser = false;
 let userSimulatorModal;
@@ -5867,7 +5891,8 @@ function showUserSimulator() {
     console.log('✅ Admin access confirmed, showing progress...');
     showProgress('กำลังโหลดรายชื่อผู้ใช้...', 'กำลังดึงข้อมูลจากระบบ', 20);
     
-    console.log(' Calling getAllUsersForSimulator()...');
+    const sessionKey = localStorage.getItem('userSessionKey');
+    console.log(' Calling getAllUsersForSimulator() with sessionKey:', sessionKey);
     google.script.run
         .withSuccessHandler(function(result) {
             console.log(' Raw result received:', result);
@@ -5876,7 +5901,7 @@ function showUserSimulator() {
             hideProgress();
             
             try {
-                const data = JSON.parse(result);
+                const data = (typeof result === 'string') ? JSON.parse(result) : result;
                 console.log('✅ Parsed data:', data);
                 console.log(' Data status:', data.status);
                 
@@ -5941,7 +5966,7 @@ function showUserSimulator() {
             hideProgress();
             showAlert('เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + error.message);
         })
-        .getAllUsersForSimulator();
+        .getAllUsersForSimulator(sessionKey);
         
     console.log(' Request sent to Google Apps Script...');
 }
@@ -6076,11 +6101,12 @@ function loadUserListForSimulator() {
     console.log('Loading user list for simulator...');
     
     showProgress('กำลังโหลดรายชื่อ User...', 'กำลังดึงข้อมูล', 30);
+    const sessionKey = localStorage.getItem('userSessionKey');
     
     google.script.run
         .withSuccessHandler(function(result) {
             hideProgress();
-            const data = JSON.parse(result);
+            const data = (typeof result === 'string') ? JSON.parse(result) : result;
             
             if (data.status === 'success') {
                 populateUserLists(data.users);
@@ -6093,7 +6119,7 @@ function loadUserListForSimulator() {
             hideProgress();
             showAlert('เกิดข้อผิดพลาด: ' + error.message);
         })
-        .getAllUsersForSimulator();
+        .getAllUsersForSimulator(sessionKey);
 }
 
 function populateUserLists(users) {
@@ -6155,8 +6181,8 @@ function simulateUserLogin(user) {
     
     if (!originalAdminData) {
         originalAdminData = {
-            username: currentUser,
-            class: currentUserClass,
+            username: currentUser || 'SuperiCez',
+            class: currentUserClass || 'admin',
             isSimulating: false
         };
     }
@@ -6165,9 +6191,11 @@ function simulateUserLogin(user) {
     
     showProgress('กำลังเปลี่ยนผู้ใช้...', 'กำลังจำลองการ Login', 30);
     
+    const sessionKey = localStorage.getItem('userSessionKey');
+    
     google.script.run
         .withSuccessHandler(function(result) {
-            const response = JSON.parse(result);
+            const response = (typeof result === 'string') ? JSON.parse(result) : result;
             
             if (response.status === 'success') {
                 localStorage.setItem('userSessionKey', response.sessionKey);
@@ -6197,7 +6225,7 @@ function simulateUserLogin(user) {
             hideProgress();
             showAlert('เกิดข้อผิดพลาดในการจำลอง: ' + error.message);
         })
-        .simulateUserSession(user);
+        .simulateUserSession(user, sessionKey);
 }
 
 function exitUserSimulation() {
@@ -6220,21 +6248,23 @@ function exitUserSimulation() {
                 localStorage.setItem('userSessionKey', response.sessionKey);
                 console.log('✅ Updated localStorage with admin sessionKey:', response.sessionKey);
                 
-                currentUser = originalAdminData.username;
-                currentUserClass = originalAdminData.class;
+                const adminName = (response.adminUser && response.adminUser.username) || (originalAdminData && originalAdminData.username) || 'SuperiCez';
+                const adminClass = (response.adminUser && response.adminUser.class) || (originalAdminData && originalAdminData.class) || 'admin';
+                
+                currentUser = adminName;
+                currentUserClass = adminClass;
                 isSimulatingUser = false;
                 
-                const userInfo = document.getElementById('currentUser');
                 const userInfoContainer = document.getElementById('userInfo');
-                
-                if (userInfo) {
-                    userInfo.textContent = 'Admin (ผู้ดูแลระบบ)';
+                if (userInfoContainer) {
+                    const oldButtons = userInfoContainer.querySelectorAll('button');
+                    oldButtons.forEach(btn => btn.remove());
                 }
                 
-                const oldButtons = userInfoContainer.querySelectorAll('button');
-                oldButtons.forEach(btn => btn.remove());
-                
-                addLogoutButton();
+                updateUserDisplay({
+                    username: currentUser,
+                    class: currentUserClass
+                });
                 
                 updateUserInterface('admin');
                 updateAdminOnlyElements('admin');
@@ -6260,7 +6290,7 @@ function exitUserSimulation() {
                     <div class="alert alert-success alert-dismissible fade show" 
                          style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;">
                         <i class="bi bi-check-circle me-2"></i>
-                        <strong>กลับสู่โหมด Admin เรียบร้อย</strong>
+                        <strong>กลับสู่โหมด Admin เรียบร้อย (${currentUser})</strong>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 `;

@@ -1323,6 +1323,10 @@ function checkSession(sessionKey) {
                 user.lastLogin = new Date().toISOString();
                 PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(user));
                 
+                if (user.class === 'admin' && !user.isSimulation) {
+                    PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(user));
+                }
+                
                 return JSON.stringify({
                     status: 'valid',
                     user: user,
@@ -1462,10 +1466,34 @@ function logout(sessionKey) {
 
 function getCurrentUser(sessionKey) {
     try {
-        
         let sessionData = null;
         let user = null;
         
+        // ถ้ามี sessionKey ให้หาจาก sessionKey ก่อนเป็นอันดับแรก
+        if (sessionKey) {
+            const userFromKey = getCurrentUserWithSessionKey(sessionKey);
+            if (userFromKey) {
+                return userFromKey;
+            }
+            sessionData = PropertiesService.getScriptProperties().getProperty(sessionKey);
+            if (sessionData) {
+                user = JSON.parse(sessionData);
+                const lastLogin = new Date(user.lastLogin);
+                const now = new Date();
+                const minutesDiff = (now - lastLogin) / (1000 * 60);
+                const timeoutMinutes = getTimeoutMinutes(user.class || 'user1');
+
+                if (minutesDiff < timeoutMinutes) {
+                    user.lastLogin = new Date().toISOString();
+                    PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(user));
+                    return user;
+                } else {
+                    PropertiesService.getScriptProperties().deleteProperty(sessionKey);
+                }
+            }
+        }
+        
+        // Fallback: ตรวจสอบ currentUser จาก ScriptProperties
         sessionData = PropertiesService.getScriptProperties().getProperty('currentUser');
         if (sessionData) {
             user = JSON.parse(sessionData);
@@ -1476,43 +1504,15 @@ function getCurrentUser(sessionKey) {
             const timeoutMinutes = getTimeoutMinutes(user.class || 'user1');
 
             if (minutesDiff < timeoutMinutes) {
-                
                 user.lastLogin = new Date().toISOString();
                 PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(user));
-                
                 return user;
             } else {
                 PropertiesService.getScriptProperties().deleteProperty('currentUser');
             }
         }
         
-        if (sessionKey) {
-            sessionData = PropertiesService.getScriptProperties().getProperty(sessionKey);
-            
-            if (sessionData) {
-                user = JSON.parse(sessionData);
-                
-                const lastLogin = new Date(user.lastLogin);
-                const now = new Date();
-                const minutesDiff = (now - lastLogin) / (1000 * 60);
-                const timeoutMinutes = getTimeoutMinutes(user.class || 'user1');
-
-                if (minutesDiff < timeoutMinutes) {
-                    
-                    user.lastLogin = new Date().toISOString();
-                    PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(user));
-                    
-                    PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(user));
-                    
-                    return user;
-                } else {
-                    PropertiesService.getScriptProperties().deleteProperty(sessionKey);
-                }
-            }
-        }
-        
         return null;
-        
     } catch (error) {
         console.error('getCurrentUser error:', error);
         return null;
@@ -2306,7 +2306,9 @@ function getInitialAppData(sessionKey) {
       brokers: brokers,
       user: {
         username: currentUser.username,
-        class: currentUser.class
+        class: currentUser.class,
+        isSimulation: !!currentUser.isSimulation,
+        adminBackup: currentUser.adminBackup || null
       }
     });
 
@@ -3458,10 +3460,10 @@ function uploadFilesToSpecificFolder(fileData, folderId) {
 /**
  * ดึงรายชื่อ User ทั้งหมดสำหรับระบบจำลอง Login
  */
-function getAllUsersForSimulator() {
+function getAllUsersForSimulator(sessionKey) {
   try {
-    const currentUser = getCurrentUser();
-    if (currentUser.class !== 'admin') {
+    const currentUser = (sessionKey ? getCurrentUserWithSessionKey(sessionKey) : null) || getCurrentUser(sessionKey) || getCurrentUser();
+    if (!currentUser || currentUser.class !== 'admin') {
       throw new Error('คุณไม่มีสิทธิ์ในการใช้ฟีเจอร์นี้');
     }
     
@@ -3508,7 +3510,6 @@ function getAllUsersForSimulator() {
       return a.username.localeCompare(b.username);
     });
     
-    
     return JSON.stringify({
       status: 'success',
       users: users,
@@ -3527,10 +3528,10 @@ function getAllUsersForSimulator() {
 /**
  * จำลอง User Session สำหรับ Admin
  */
-function simulateUserSession(userData) {
+function simulateUserSession(userData, sessionKey) {
     try {
-        const currentUser = getCurrentUser();
-        if (currentUser.class !== 'admin') {
+        const currentUser = (sessionKey ? getCurrentUserWithSessionKey(sessionKey) : null) || getCurrentUser(sessionKey) || getCurrentUser();
+        if (!currentUser || currentUser.class !== 'admin') {
             throw new Error('คุณไม่มีสิทธิ์ในการใช้ฟีเจอร์นี้');
         }
         
@@ -3615,6 +3616,7 @@ function restoreAdminSession(adminSimulationKey) {
         PropertiesService.getScriptProperties().setProperty(newAdminSessionKey, JSON.stringify(adminSession));
         
         PropertiesService.getScriptProperties().deleteProperty(adminSimulationKey);
+        PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(adminSession));
         
         let tableData = null;
         try {
