@@ -4834,7 +4834,13 @@ function approveUser(userId, name) {
 // อ่านข้อมูล
 // ============================================================
 function toCE(d) {
-  if (!(d instanceof Date) || isNaN(d)) return null;
+  if (!d) return null;
+  if (!(d instanceof Date)) {
+    var p = new Date(d);
+    if (!isNaN(p.getTime())) d = p;
+    else return null;
+  }
+  if (isNaN(d.getTime())) return null;
   var y = d.getFullYear();
   return new Date(y > 2500 ? y - 543 : y, d.getMonth(), d.getDate());
 }
@@ -5409,25 +5415,59 @@ function investorDetailFlex(name) {
   if (!assets.length) return textMsg('ไม่พบข้อมูลนายทุน: ' + name);
 
   var invMonth = 0, invYear = 0, principal = 0, risk = 0, active = 0;
+  var heldByMonth = {};
+  var noDateCount = 0;
+
   assets.forEach(function(a) {
-    if (a.status==='ดำเนินการอยู่' || a.status==='ดำเนินการอยู่ (ต่อดอก)') {
+    var isHeld = (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน');
+    if (isHeld) {
       principal += a.principal;
       invMonth += a.invMonth;   // ดอกนายทุน/เดือน
       invYear += a.invYear;     // ดอกนายทุน/ปี
       active++;
       var l = daysLeft(a.end);
-      if (l!==null && l<0) risk++;
-    } else if (a.status==='อยู่ระหว่างผ่อนผัน') risk++;
+      if (a.status === 'อยู่ระหว่างผ่อนผัน' || (l !== null && l < 0)) risk++;
+
+      if (a.end && a.end instanceof Date && !isNaN(a.end.getTime())) {
+        var y = a.end.getFullYear();
+        var m = a.end.getMonth(); // 0-11
+        var sortKey = y + '-' + ('0' + (m + 1)).slice(-2);
+        if (!heldByMonth[sortKey]) {
+          var mThai = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+          var thaiYear = (y + 543).toString().slice(-2);
+          heldByMonth[sortKey] = { label: mThai[m] + ' ' + thaiYear, count: 0 };
+        }
+        heldByMonth[sortKey].count++;
+      } else {
+        noDateCount++;
+      }
+    }
   });
 
   // การ์ดสรุปเหมารวม (ใบแรก)
   var sumRows = [
-    miniRow('จำนวนแปลง', assets.length + ' แปลง (ถือครอง ' + active + ')'),
-    { type:'separator', margin:'md', color:'#EEEEEE' },
-    miniRow('เงินต้นรวม', baht(principal) + ' ฿'),
-    miniRow('ดอกนายทุน/เดือน', baht(invMonth) + ' ฿'),
-    miniRow('ดอกนายทุน/ปี', baht(invYear) + ' ฿')
+    miniRow('จำนวนแปลง', assets.length + ' แปลง'),
+    miniRow('ถือครอง', active + ' แปลง', '#1565C0')
   ];
+
+  // แจกแจงเดือนที่สิ้นสุดของแปลงที่ถือครอง เรียงตามลำดับเวลา
+  var sortedMonthKeys = Object.keys(heldByMonth).sort();
+  if (sortedMonthKeys.length > 0 || noDateCount > 0) {
+    sumRows.push({ type:'separator', margin:'sm', color:'#EEEEEE' });
+    sortedMonthKeys.forEach(function(k) {
+      var item = heldByMonth[k];
+      sumRows.push(miniRow(item.label, item.count + ' แปลง'));
+    });
+    if (noDateCount > 0) {
+      sumRows.push(miniRow('ไม่ระบุวันสิ้นสุด', noDateCount + ' แปลง', '#9E9E9E'));
+    }
+  }
+
+  // เส้นคั่นก่อนข้อมูลการเงิน
+  sumRows.push({ type:'separator', margin:'md', color:'#EEEEEE' });
+  sumRows.push(miniRow('เงินต้นรวม', baht(principal) + ' ฿'));
+  sumRows.push(miniRow('ดอกนายทุน/เดือน', baht(invMonth) + ' ฿'));
+  sumRows.push(miniRow('ดอกนายทุน/ปี', baht(invYear) + ' ฿'));
   if (risk) sumRows.push(miniRow('ต้องจับตา', risk + ' แปลง', '#D32F2F'));
 
   var summaryCard = {
