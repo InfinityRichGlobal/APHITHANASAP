@@ -5801,6 +5801,13 @@ function updateUserDisplay(user) {
             class: user.class,
             isSimulating: false
         };
+        try {
+            localStorage.setItem('adminOriginalData', JSON.stringify(originalAdminData));
+            const currentKey = localStorage.getItem('userSessionKey');
+            if (currentKey && !currentKey.startsWith('admin_simulation_')) {
+                localStorage.setItem('adminOriginalSessionKey', currentKey);
+            }
+        } catch(e) {}
     }
     
     const userInfo = document.getElementById('currentUser');
@@ -6167,6 +6174,24 @@ function simulateUserLogin(user) {
         };
     }
     
+    // บันทึก Admin data และ sessionKey ลง localStorage อย่างถาวร ป้องกันคีย์หาย 100%
+    const adminSessionKey = localStorage.getItem('userSessionKey');
+    if (adminSessionKey && !adminSessionKey.startsWith('admin_simulation_')) {
+        localStorage.setItem('adminOriginalSessionKey', adminSessionKey);
+    }
+    localStorage.setItem('adminOriginalData', JSON.stringify({
+        username: originalAdminData.username || currentUser || 'SuperiCez',
+        class: originalAdminData.class || currentUserClass || 'admin'
+    }));
+
+    // แคชตารางแอดมินไว้ก่อนสลับโหมด เพื่อใช้คืนค่าทันทีเมื่อกดกลับสู่ Admin (Instant Restore 0ms)
+    if (window.originalTableData && window.originalTableHeaders) {
+        window.adminFullTableData = {
+            headers: window.originalTableHeaders,
+            data: window.originalTableData
+        };
+    }
+    
     userSimulatorModal.hide();
     
     showProgress('กำลังเปลี่ยนผู้ใช้...', 'กำลังจำลองการ Login', 30);
@@ -6187,7 +6212,7 @@ function simulateUserLogin(user) {
                 
                 updateUserDisplayForSimulation(user);
                 
-                // ✅ แสดงข้อมูลตารางของ User ที่จำลองทันทีจาก response โดยไม่ต้องรอหรือยิงแยกรอบ
+                // แสดงข้อมูลตารางของ User ที่จำลองทันทีจาก response โดยไม่ต้องรอหรือยิงแยกรอบ
                 if (response.table && response.table.headers && response.table.data) {
                     currentUserClass = response.table.userClass || user.class;
                     buildTable(response.table.headers, response.table.data);
@@ -6214,94 +6239,130 @@ function simulateUserLogin(user) {
         .simulateUserSession(user, sessionKey);
 }
 
+function showToastNotification(message) {
+    const existing = document.getElementById('toastAdminNotification');
+    if (existing) existing.remove();
+    
+    const toast = document.createElement('div');
+    toast.id = 'toastAdminNotification';
+    toast.className = 'alert alert-success alert-dismissible fade show';
+    toast.style.position = 'fixed';
+    toast.style.top = '80px';
+    toast.style.right = '20px';
+    toast.style.zIndex = '99999';
+    toast.style.maxWidth = '400px';
+    toast.style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
+    toast.innerHTML = '<i class="bi bi-check-circle me-2"></i><strong>' + message + '</strong><button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    document.body.appendChild(toast);
+    setTimeout(function() {
+        if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 3500);
+}
+
 function exitUserSimulation() {
     console.log('=== EXIT USER SIMULATION ===');
     
-    showProgress('กำลังกลับสู่ Admin...', 'กำลังคืนค่าสิทธิ์ผู้ดูแลระบบ', 50);
+    let adminName = (originalAdminData && originalAdminData.username);
+    let adminClass = (originalAdminData && originalAdminData.class) || 'admin';
+    
+    if (!adminName) {
+        try {
+            const saved = JSON.parse(localStorage.getItem('adminOriginalData') || '{}');
+            if (saved && saved.username) {
+                adminName = saved.username;
+                adminClass = saved.class || 'admin';
+            }
+        } catch(e) {}
+    }
+    if (!adminName) adminName = 'SuperiCez';
     
     const currentSimulationKey = localStorage.getItem('userSessionKey');
+    const originalAdminKey = localStorage.getItem('adminOriginalSessionKey') || '';
     
-    // ✅ ฟังก์ชันกู้คืนสถานะ Admin อย่างปลอดภัย (ทำงานได้เสมอ ไม่ติดค้าง)
-    function completeAdminRestore(newSessionKey, tableData) {
-        if (newSessionKey) {
-            localStorage.setItem('userSessionKey', newSessionKey);
-            console.log('✅ Updated localStorage with admin sessionKey:', newSessionKey);
-        }
-        
-        const adminName = (originalAdminData && originalAdminData.username) || 'Admin';
-        const adminClass = (originalAdminData && originalAdminData.class) || 'admin';
-        
-        currentUser = adminName;
-        currentUserClass = adminClass;
-        isSimulatingUser = false;
-        
-        const userInfoContainer = document.getElementById('userInfo');
-        if (userInfoContainer) {
-            const oldButtons = userInfoContainer.querySelectorAll('button');
-            oldButtons.forEach(btn => btn.remove());
-        }
-        
-        updateUserDisplay({
-            username: currentUser,
-            class: currentUserClass
-        });
-        
-        updateUserInterface('admin');
-        updateAdminOnlyElements('admin');
-        
-        // ล้างฟิลเตอร์ที่อาจค้างจากโหมดจำลอง
-        try {
-            if (typeof clearAllFilters === 'function') clearAllFilters();
-        } catch(e) {}
-
-        hideProgress();
-        
-        // ถ้ามีข้อมูลตาราง Admin ส่งกลับมาให้เรนเดอร์ทันที มิฉะนั้นโหลดใหม่ผ่าน loadTable
-        if (tableData && tableData.headers && tableData.data) {
-            currentUserClass = 'admin';
-            buildTable(tableData.headers, tableData.data);
-            updateStatistics(tableData.data);
-            const wrap = document.getElementById('table-wrapper');
-            if (wrap) wrap.style.display = 'block';
-        } else {
-            loadTable();
-        }
-        
-        const exitAlert = `
-            <div class="alert alert-success alert-dismissible fade show" 
-                 style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;">
-                <i class="bi bi-check-circle me-2"></i>
-                <strong>กลับสู่โหมด Admin เรียบร้อย (${currentUser})</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', exitAlert);
-        
-        setTimeout(function() {
-            const alert = document.querySelector('.alert-success');
-            if (alert) alert.remove();
-        }, 3000);
+    // ✅ 1. สลับหน้าจอกลับสู่ Admin ทันที (Instant UI Switch ในเสี้ยววินาที - ไม่ต้องรอเซิร์ฟเวอร์)
+    currentUser = adminName;
+    currentUserClass = adminClass;
+    isSimulatingUser = false;
+    
+    const userInfoContainer = document.getElementById('userInfo');
+    if (userInfoContainer) {
+        const oldButtons = userInfoContainer.querySelectorAll('button');
+        oldButtons.forEach(btn => btn.remove());
     }
     
-    const clientAdminName = (originalAdminData && originalAdminData.username) || '';
+    updateUserDisplay({
+        username: currentUser,
+        class: currentUserClass
+    });
+    
+    updateUserInterface('admin');
+    updateAdminOnlyElements('admin');
+    
+    const simAlert = document.querySelector('.simulation-alert');
+    if (simAlert) simAlert.remove();
+    
+    try {
+        if (typeof clearAllFilters === 'function') clearAllFilters();
+    } catch(e) {}
 
+    // คืนค่าตาราง Admin ทันทีจากแคชในความจำ (Instant Table Render 0ms)
+    const hasAdminCache = window.adminFullTableData && 
+                          window.adminFullTableData.headers && 
+                          window.adminFullTableData.data &&
+                          window.adminFullTableData.data.length > 0;
+                          
+    if (hasAdminCache) {
+        console.log('✅ Instant restore Admin table from cache (0ms)!');
+        buildTable(window.adminFullTableData.headers, window.adminFullTableData.data);
+        updateStatistics(window.adminFullTableData.data);
+        const wrap = document.getElementById('table-wrapper');
+        if (wrap) wrap.style.display = 'block';
+    } else {
+        // หากไม่มีแคช (เช่น เพิ่งกด F5 รีเฟรชหน้าจอตอนจำลอง) ค่อยแสดงสถานะรอโหลด
+        showProgress('กำลังโหลดข้อมูล Admin...', 'กำลังดึงข้อมูลทรัพย์สินทั้งหมด', 50);
+    }
+    
+    showToastNotification('✅ กลับสู่โหมด Admin เรียบร้อย (' + currentUser + ')');
+    
+    // ✅ 2. ยิงคำสั่งกู้คืนเซสชันไปยัง Apps Script ในเบื้องหลัง (Background Handshake)
+    const needTableFromServer = !hasAdminCache;
+    
     google.script.run
         .withSuccessHandler(function(result) {
+            hideProgress();
             const response = (typeof result === 'string') ? JSON.parse(result) : result;
             
             if (response && response.status === 'success') {
-                completeAdminRestore(response.sessionKey, response.table);
+                if (response.sessionKey) {
+                    localStorage.setItem('userSessionKey', response.sessionKey);
+                    console.log('✅ Updated localStorage with admin sessionKey:', response.sessionKey);
+                }
+                
+                if (response.table && response.table.headers && response.table.data) {
+                    window.adminFullTableData = {
+                        headers: response.table.headers,
+                        data: response.table.data
+                    };
+                    buildTable(response.table.headers, response.table.data);
+                    updateStatistics(response.table.data);
+                    const wrap = document.getElementById('table-wrapper');
+                    if (wrap) wrap.style.display = 'block';
+                }
             } else {
-                console.warn('Backend restore returned non-success, restoring local admin:', response);
-                completeAdminRestore();
+                console.warn('Backend restore returned non-success:', response);
+                if (originalAdminKey) {
+                    localStorage.setItem('userSessionKey', originalAdminKey);
+                }
             }
         })
         .withFailureHandler(function(error) {
-            console.error('restoreAdminSession failed, restoring local admin:', error);
-            completeAdminRestore();
+            hideProgress();
+            console.error('restoreAdminSession network error:', error);
+            if (originalAdminKey) {
+                localStorage.setItem('userSessionKey', originalAdminKey);
+            }
         })
-        .restoreAdminSession(currentSimulationKey, clientAdminName);
+        .restoreAdminSession(currentSimulationKey, adminName, needTableFromServer, originalAdminKey);
 }
 
 function updateUserDisplayForSimulation(user) {
@@ -6459,7 +6520,12 @@ function confirmLogout() {
             console.log(' Logout response:', response);
             
             localStorage.removeItem('userSessionKey');
-            console.log('️ Session key removed from localStorage');
+            localStorage.removeItem('adminOriginalSessionKey');
+            localStorage.removeItem('adminOriginalData');
+            window.adminFullTableData = null;
+            originalAdminData = null;
+            isSimulatingUser = false;
+            console.log('️ Session keys removed from localStorage');
             
             isLoggedIn = false;
             showLoginSection();
@@ -6472,6 +6538,11 @@ function confirmLogout() {
             console.error(' Logout error:', error);
             
             localStorage.removeItem('userSessionKey');
+            localStorage.removeItem('adminOriginalSessionKey');
+            localStorage.removeItem('adminOriginalData');
+            window.adminFullTableData = null;
+            originalAdminData = null;
+            isSimulatingUser = false;
             isLoggedIn = false;
             showLoginSection();
         })
@@ -7314,6 +7385,15 @@ function buildTable(headers, data) {
     console.log('buildTable called with:', { headers: headers.length, data: data.length });
     
     window.originalTableData = data;
+    window.originalTableHeaders = headers;
+    
+    // บันทึกแคชของ Admin ไว้เสมอเมื่ออยู่ในโหมด Admin เพื่อใช้คืนค่าทันทีเมื่อกดกลับสู่ Admin (Instant Restore 0ms)
+    if (currentUserClass === 'admin' && !isSimulatingUser) {
+        window.adminFullTableData = {
+            headers: headers,
+            data: data
+        };
+    }
     
     if (assetTable) {
         try {

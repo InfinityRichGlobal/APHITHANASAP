@@ -1315,7 +1315,8 @@ function checkSession(sessionKey) {
         if (sessionData) {
             const user = JSON.parse(sessionData);
             
-            const timeoutMinutes = getTimeoutMinutes(user.class);
+            // โหมดจำลองสิทธิ์ให้ใช้อายุเซสชันของ Admin (480 นาที / 8 ชม.) เสมอ ป้องกันเซสชันหลุด
+            const timeoutMinutes = user.isSimulation ? 480 : getTimeoutMinutes(user.class);
             const lastLogin = new Date(user.lastLogin);
             const now = new Date();
             const minutesDiff = (now - lastLogin) / (1000 * 60);
@@ -1483,7 +1484,7 @@ function getCurrentUser(sessionKey) {
                 const lastLogin = new Date(user.lastLogin);
                 const now = new Date();
                 const minutesDiff = (now - lastLogin) / (1000 * 60);
-                const timeoutMinutes = getTimeoutMinutes(user.class || 'user1');
+                const timeoutMinutes = user.isSimulation ? 480 : getTimeoutMinutes(user.class || 'user1');
 
                 if (minutesDiff < timeoutMinutes) {
                     user.lastLogin = new Date().toISOString();
@@ -3591,7 +3592,8 @@ function simulateUserSession(userData, sessionKey) {
         
         const adminBackup = {
             originalAdmin: currentUser,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            originalSessionKey: sessionKey || currentUser.sessionKey || ''
         };
         
         const adminSimulationKey = 'admin_simulation_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -3606,10 +3608,19 @@ function simulateUserSession(userData, sessionKey) {
             lastLogin: new Date().toISOString(),
             isSimulation: true,
             adminBackup: adminBackup,
-            sessionKey: adminSimulationKey
+            sessionKey: adminSimulationKey,
+            adminOriginalKey: sessionKey || currentUser.sessionKey || ''
         };
         
         PropertiesService.getScriptProperties().setProperty(adminSimulationKey, JSON.stringify(simulatedSession));
+        
+        // ต่ออายุเซสชันแอดมินเดิมในความจำระบบ ไม่ลบทิ้ง
+        if (sessionKey) {
+            try {
+                currentUser.lastLogin = new Date().toISOString();
+                PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(currentUser));
+            } catch(e) {}
+        }
         
         sendTelegram(
             '🎭 <b>[APHITHANASAP - ใช้งานโหมดจำลองสิทธิ์]</b>\n' +
@@ -3669,11 +3680,12 @@ function simulateUserSession(userData, sessionKey) {
  * คืนค่า Admin Session
  */
 
-function restoreAdminSession(adminSimulationKey, fallbackAdminUsername) {
+function restoreAdminSession(adminSimulationKey, fallbackAdminUsername, includeTable, clientOriginalAdminKey) {
     try {
         let adminSession = null;
         let sessionData = null;
         
+        // 1. ตรวจสอบจาก adminSimulationKey
         if (adminSimulationKey) {
             sessionData = PropertiesService.getScriptProperties().getProperty(adminSimulationKey);
         }
@@ -3687,7 +3699,20 @@ function restoreAdminSession(adminSimulationKey, fallbackAdminUsername) {
             } catch(e) {}
         }
         
-        // Fallback 1: ตรวจสอบ currentUser จาก ScriptProperties
+        // 2. ตรวจสอบจาก clientOriginalAdminKey (ที่เบราว์เซอร์จำไว้)
+        if (!adminSession && clientOriginalAdminKey) {
+            const origData = PropertiesService.getScriptProperties().getProperty(clientOriginalAdminKey);
+            if (origData) {
+                try {
+                    const parsed = JSON.parse(origData);
+                    if (parsed && parsed.class === 'admin') {
+                        adminSession = parsed;
+                    }
+                } catch(e) {}
+            }
+        }
+        
+        // 3. Fallback 1: ตรวจสอบ currentUser จาก ScriptProperties
         if (!adminSession) {
             const fallbackAdmin = PropertiesService.getScriptProperties().getProperty('currentUser');
             if (fallbackAdmin) {
@@ -3700,21 +3725,25 @@ function restoreAdminSession(adminSimulationKey, fallbackAdminUsername) {
             }
         }
         
-        // Fallback 2: ใช้ชื่อแอดมินประจำเครื่องที่ส่งมา (รองรับแอดมินหลายคนอย่างอิสระ)
+        // 4. Fallback 2: ใช้ชื่อแอดมินประจำเครื่องที่ส่งมา (รองรับแอดมินหลายคนอย่างอิสระ)
         if (!adminSession) {
             adminSession = {
-                username: fallbackAdminUsername || 'Admin',
+                username: fallbackAdminUsername || 'SuperiCez',
                 class: 'admin',
                 email: fallbackAdminUsername || 'admin'
             };
         }
         
-        const newAdminSessionKey = 'admin_session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        // ใช้คีย์เดิมที่ปลอดภัย หรือสร้างใหม่
+        const restoredAdminKey = (adminSession.sessionKey && !adminSession.sessionKey.startsWith('admin_simulation_'))
+            ? adminSession.sessionKey
+            : (clientOriginalAdminKey || ('admin_session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)));
+            
         adminSession.lastLogin = new Date().toISOString();
         adminSession.isSimulation = false;
-        adminSession.sessionKey = newAdminSessionKey;
+        adminSession.sessionKey = restoredAdminKey;
         
-        PropertiesService.getScriptProperties().setProperty(newAdminSessionKey, JSON.stringify(adminSession));
+        PropertiesService.getScriptProperties().setProperty(restoredAdminKey, JSON.stringify(adminSession));
         PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(adminSession));
         
         if (adminSimulationKey) {
@@ -3722,38 +3751,42 @@ function restoreAdminSession(adminSimulationKey, fallbackAdminUsername) {
         }
         
         let tableData = null;
-        try {
-            const ss = SpreadsheetApp.getActiveSpreadsheet();
-            const sheet = ss.getSheetByName('DATABASE');
-            if (sheet) {
-                const values = sheet.getDataRange().getValues();
-                const lastRow = sheet.getLastRow();
-                if (lastRow > 1) {
-                    const rawColumn29 = sheet.getRange(2, 30, lastRow - 1, 1).getDisplayValues();
-                    for (let i = 1; i < values.length; i++) {
-                        if (rawColumn29[i - 1]) values[i][29] = rawColumn29[i - 1][0];
+        // โหลดข้อมูลเฉพาะกรณีที่ Client ขอมาเท่านั้น (เช่น รีเฟรชหน้าจอในโหมดจำลอง)
+        // ถ้า Client มีแคชอยู่แล้ว จะข้ามส่วนนี้ ทำให้เสร็จสิ้นในเสี้ยววินาที (~0.1-0.2s)
+        if (includeTable) {
+            try {
+                const ss = SpreadsheetApp.getActiveSpreadsheet();
+                const sheet = ss.getSheetByName('DATABASE');
+                if (sheet) {
+                    const values = sheet.getDataRange().getValues();
+                    const lastRow = sheet.getLastRow();
+                    if (lastRow > 1) {
+                        const rawColumn29 = sheet.getRange(2, 30, lastRow - 1, 1).getDisplayValues();
+                        for (let i = 1; i < values.length; i++) {
+                            if (rawColumn29[i - 1]) values[i][29] = rawColumn29[i - 1][0];
+                        }
+                    }
+                    if (values.length > 0) {
+                        const [headers, ...allData] = values;
+                        tableData = {
+                            headers: headers,
+                            data: filterDataByPermission(allData, adminSession),
+                            userClass: adminSession.class,
+                            totalRows: allData.length
+                        };
                     }
                 }
-                if (values.length > 0) {
-                    const [headers, ...allData] = values;
-                    tableData = {
-                        headers: headers,
-                        data: filterDataByPermission(allData, adminSession),
-                        userClass: adminSession.class,
-                        totalRows: allData.length
-                    };
-                }
+            } catch (tableErr) {
+                console.warn('restoreAdminSession table load warning:', tableErr);
             }
-        } catch (tableErr) {
-            console.warn('restoreAdminSession table load warning:', tableErr);
         }
 
         return JSON.stringify({
             status: 'success',
             message: 'กลับสู่โหมด Admin สำเร็จ',
-            sessionKey: newAdminSessionKey,
+            sessionKey: restoredAdminKey,
             adminUser: {
-                username: adminSession.username || 'SuperiCez',
+                username: adminSession.username || fallbackAdminUsername || 'SuperiCez',
                 class: 'admin'
             },
             table: tableData
@@ -4406,7 +4439,8 @@ function getCurrentUserWithSessionKey(sessionKey) {
             if (sessionData) {
                 const user = JSON.parse(sessionData);
                 
-                const timeoutMinutes = getTimeoutMinutes(user.class || 'user1');
+                // โหมดจำลองใช้อายุเซสชันของ Admin (480 นาที / 8 ชม.) เสมอ
+                const timeoutMinutes = 480;
                 const lastLogin = new Date(user.lastLogin);
                 const now = new Date();
                 const minutesDiff = (now - lastLogin) / (1000 * 60);
@@ -4421,10 +4455,9 @@ function getCurrentUserWithSessionKey(sessionKey) {
                 if (minutesDiff < timeoutMinutes) {
                     user.lastLogin = new Date().toISOString();
                     PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(user));
-                    
                     return user;
                 } else {
-                    PropertiesService.getScriptProperties().deleteProperty(sessionKey);
+                    // ไม่ลบคีย์ทิ้งทันที เพื่อให้แอดมินกดกลับสู่สิทธิ์หลักได้เสมอ
                     return null;
                 }
             }
