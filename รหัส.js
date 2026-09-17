@@ -5471,7 +5471,7 @@ function investorDetailFlex(name) {
   if (risk) sumRows.push(miniRow('ต้องจับตา', risk + ' แปลง', '#D32F2F'));
 
   var summaryCard = {
-    type:'bubble', size:'kilo',
+    type:'bubble', size:'mega',
     header:{ type:'box', layout:'vertical', backgroundColor:'#1565C0', paddingAll:'lg', contents:[
       txt('สรุปพอร์ตนายทุน', 'xs', '#FFFFFF'),
       txt('👤 ' + name, 'xl', '#FFFFFF', 'bold', null, 'end')
@@ -5486,16 +5486,25 @@ function investorDetailFlex(name) {
     var accent = (STYLE[a.status] || {}).color || '#1565C0';
     return plotBubble(a, accent);
   });
-  var allBubbles = [summaryCard].concat(plotCards);
 
-  // แบ่งเป็นหลาย carousel (12 bubble/ใบ) แสดงครบ
   var messages = [];
-  for (var j = 0; j < allBubbles.length; j += 12) {
-    messages.push({
-      type:'flex', altText:'นายทุน ' + name,
-      contents:{ type:'carousel', contents: allBubbles.slice(j, j + 12) }
-    });
-    if (messages.length >= 5) break;  // LINE ส่งได้สูงสุด 5 ข้อความ/reply
+  // แถวแรก (ข้อความที่ 1): เฉพาะการ์ดสรุปพอร์ตนายทุนเท่านั้น (Bubble เดี่ยว)
+  messages.push({
+    type: 'flex',
+    altText: 'สรุปพอร์ตนายทุน ' + name,
+    contents: summaryCard
+  });
+
+  // แถวสองเป็นต้นไป (ข้อความที่ 2+): การ์ดรายแปลง ในรูปแบบ Carousel
+  if (plotCards.length > 0) {
+    for (var j = 0; j < plotCards.length; j += 12) {
+      messages.push({
+        type: 'flex',
+        altText: 'แปลงของ ' + name + (plotCards.length > 12 ? ' (ชุดที่ ' + (Math.floor(j/12) + 1) + ')' : ''),
+        contents: { type: 'carousel', contents: plotCards.slice(j, j + 12) }
+      });
+      if (messages.length >= 5) break;  // LINE ส่งได้สูงสุด 5 ข้อความ/reply
+    }
   }
   return messages;
 }
@@ -5504,114 +5513,140 @@ function investorDetailFlex(name) {
 // FLEX: ครบกำหนดเดือนนี้
 // ============================================================
 function dueThisMonthFlex() {
-  var assets = readAssets();
   var now = new Date();
-  var thisMonth = now.getMonth(), thisYear = now.getFullYear();
-  var due = assets.filter(function(a) {
-    if (a.status!=='ดำเนินการอยู่' && a.status!=='ดำเนินการอยู่ (ต่อดอก)') return false;
-    return a.end && a.end.getMonth()===thisMonth && a.end.getFullYear()===thisYear;
-  });
-
-  if (!due.length) return [textMsg('✅ เดือนนี้ไม่มีสัญญาครบกำหนด')];
-
-  // เรียงตามความเร่งด่วน (ครบเร็วสุด/เกินก่อน)
-  due.sort(function(x, y){ return (daysLeft(x.end)||0) - (daysLeft(y.end)||0); });
-
-  // การ์ดสรุปนำ (รวมเงินต้น + ดอกนายทุนที่จะครบ)
-  var sumPrincipal = 0, sumInvYear = 0;
-  due.forEach(function(a){ sumPrincipal += a.principal; sumInvYear += a.invYear; });
-
-  var leadCard = {
-    type:'bubble', size:'kilo',
-    header:{ type:'box', layout:'vertical', backgroundColor:'#EF6C00', paddingAll:'lg', contents:[
-      txt('⏰ ครบกำหนดเดือนนี้', 'md', '#FFFFFF', 'bold'),
-      txt(new Date().toLocaleDateString('th-TH', {month:'long', year:'numeric'}), 'xs', '#FFFFFF')
-    ]},
-    body:{ type:'box', layout:'vertical', paddingAll:'lg', spacing:'none', contents:[
-      { type:'box', layout:'vertical', margin:'none', spacing:'sm', contents:[
-        miniRow('จำนวน', due.length + ' แปลง', '#E65100'),
-        miniRow('เงินต้นรวม', baht(sumPrincipal) + ' ฿'),
-        miniRow('ดอกนายทุน/ปีรวม', baht(sumInvYear) + ' ฿')
-      ]},
-      { type:'text', text:'ปัดดูรายแปลง →', size:'xxs', color:'#BDBDBD', margin:'md' }
-    ]}
-  };
-
-  var bubbles = [leadCard].concat(due.map(function(a){ return plotBubble(a, '#EF6C00'); }));
-  var messages = [];
-  for (var j = 0; j < bubbles.length; j += 12) {
-    messages.push({ type:'flex', altText:'ครบกำหนดเดือนนี้ (' + due.length + ')',
-      contents:{ type:'carousel', contents: bubbles.slice(j, j + 12) }});
-    if (messages.length >= 5) break;
-  }
-  return messages;
+  return expireMonthCarousel(now.getMonth(), now.getFullYear());
 }
-
 
 var THAI_MONTHS_FULL = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
                         'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
 
-// การ์ดเลือกเดือน (6 เดือน: เดือนนี้ + อีก 5 เดือนข้างหน้า)
+// การ์ดเลือกเดือน (12 เดือนหลังจากนี้ พร้อมระบุจำนวนแปลง)
 function expireMonthSelectorFlex() {
   var now = new Date();
-  var rows = [txt('เลือกเดือนที่ต้องการดูสัญญาครบกำหนด', 'xs', '#9E9E9E')];
+  var currentMonth = now.getMonth();
+  var currentYear = now.getFullYear();
 
-  for (var i = 0; i < 6; i++) {
-    var d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+  // อ่านข้อมูลเพื่อคำนวณจำนวนแปลงที่ครบกำหนดในแต่ละเดือน
+  var assets = readAssets();
+  var countByMonth = {};
+  assets.forEach(function(a) {
+    var isActive = (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน');
+    if (isActive && a.end && a.end instanceof Date && !isNaN(a.end.getTime())) {
+      var k = a.end.getFullYear() + '-' + a.end.getMonth();
+      countByMonth[k] = (countByMonth[k] || 0) + 1;
+    }
+  });
+
+  var rows = [txt('เลือกเดือนที่ต้องการดูสัญญาครบกำหนด (12 เดือน)', 'xs', '#9E9E9E')];
+
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(currentYear, currentMonth + i, 1);
     var m = d.getMonth();
     var y = d.getFullYear();
-    var label = THAI_MONTHS_FULL[m] + ' ' + (y + 543);
+    var k = y + '-' + m;
+    var count = countByMonth[k] || 0;
+    var monthName = THAI_MONTHS_FULL[m] + ' ' + (y + 543);
     var prefix = (i === 0) ? '📅 ' : '';
 
+    var labelText = prefix + monthName + (count > 0 ? ' (' + count + ' แปลง)' : ' (ไม่มี)');
+    var btnColor = (count > 0) ? '#EF6C00' : '#90A4AE';
+
     rows.push({
-      type: 'button', style: 'primary', color: '#EF6C00', height: 'sm', margin: 'sm',
-      action: { type: 'postback', label: prefix + label, data: 'action=expiremonth&m=' + m + '&y=' + y }
+      type: 'button',
+      style: 'primary',
+      color: btnColor,
+      height: 'sm',
+      margin: 'sm',
+      action: {
+        type: 'postback',
+        label: labelText,
+        data: 'action=expiremonth&m=' + m + '&y=' + y
+      }
     });
   }
 
-  return bubble('⏰ ครบกำหนดสัญญา (เลือกเดือน)', '#EF6C00', rows);
+  return bubble('⏰ ครบกำหนดสัญญา (12 เดือน)', '#EF6C00', rows);
 }
 
-// carousel ของเดือนที่เลือก
+// carousel ของเดือนที่เลือก: แถวแรก สรุปตามรายชื่อนายทุน, แถวสองเป็นต้นไป การ์ดรายแปลง
 function expireMonthCarousel(month, year) {
   var assets = readAssets();
   var due = assets.filter(function(a) {
-    if (a.status!=='ดำเนินการอยู่' && a.status!=='ดำเนินการอยู่ (ต่อดอก)') return false;
-    return a.end && a.end.getMonth()===month && a.end.getFullYear()===year;
+    var isActive = (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)' || a.status === 'อยู่ระหว่างผ่อนผัน');
+    if (!isActive) return false;
+    return a.end && a.end instanceof Date && a.end.getMonth() === month && a.end.getFullYear() === year;
   });
 
   var monthLabel = THAI_MONTHS_FULL[month] + ' ' + (year + 543);
 
-  if (!due.length) return [textMsg('✅ เดือน' + monthLabel + ' ไม่มีสัญญาครบกำหนด')];
+  if (!due.length) {
+    return [textMsg('✅ เดือน ' + monthLabel + ' ไม่มีสัญญาครบกำหนดครับ')];
+  }
 
+  // เรียงตามวันที่ครบกำหนดจากใกล้สุด
   due.sort(function(x, y){ return (daysLeft(x.end)||0) - (daysLeft(y.end)||0); });
 
   var sumPrincipal = 0, sumInvYear = 0;
-  due.forEach(function(a){ sumPrincipal += a.principal; sumInvYear += a.invYear; });
+  var invCount = {};
+  due.forEach(function(a) {
+    sumPrincipal += a.principal;
+    sumInvYear += a.invYear;
+    var invName = a.investor || '(ไม่ระบุนายทุน)';
+    invCount[invName] = (invCount[invName] || 0) + 1;
+  });
 
-  var leadCard = {
-    type:'bubble', size:'kilo',
-    header:{ type:'box', layout:'vertical', backgroundColor:'#EF6C00', paddingAll:'lg', contents:[
-      txt('⏰ ครบกำหนด', 'md', '#FFFFFF', 'bold'),
-      txt(monthLabel, 'xs', '#FFFFFF')
-    ]},
-    body:{ type:'box', layout:'vertical', paddingAll:'lg', spacing:'none', contents:[
-      { type:'box', layout:'vertical', margin:'none', spacing:'sm', contents:[
-        miniRow('จำนวน', due.length + ' แปลง', '#E65100'),
-        miniRow('เงินต้นรวม', baht(sumPrincipal) + ' ฿'),
-        miniRow('ดอกนายทุน/ปีรวม', baht(sumInvYear) + ' ฿')
-      ]},
-      { type:'text', text:'ปัดดูรายแปลง →', size:'xxs', color:'#BDBDBD', margin:'md' }
-    ]}
+  // เรียงลำดับนายทุนตามจำนวนแปลงมากไปน้อย
+  var sortedInvs = Object.keys(invCount).sort(function(a, b) {
+    return invCount[b] - invCount[a];
+  });
+
+  var summaryRows = [
+    miniRow('จำนวนทั้งหมด', due.length + ' แปลง', '#E65100'),
+    miniRow('เงินต้นรวม', baht(sumPrincipal) + ' ฿'),
+    miniRow('ดอกนายทุน/ปีรวม', baht(sumInvYear) + ' ฿'),
+    { type: 'separator', margin: 'md', color: '#EEEEEE' }
+  ];
+
+  // สรุปตามรายชื่อนายทุน: ซ้ายชื่อนายทุน ขวาจำนวนแปลง
+  sortedInvs.forEach(function(invName) {
+    summaryRows.push(miniRow(invName, invCount[invName] + ' แปลง'));
+  });
+
+  // แถวแรก (ข้อความที่ 1): การ์ดสรุปครบกำหนดประจำเดือนเท่านั้น (Bubble เดี่ยว)
+  var summaryCard = {
+    type: 'bubble', size: 'mega',
+    header: {
+      type: 'box', layout: 'vertical', backgroundColor: '#EF6C00', paddingAll: 'lg', contents: [
+        txt('⏰ ครบกำหนดสัญญา', 'xs', '#FFFFFF'),
+        txt(monthLabel, 'xl', '#FFFFFF', 'bold', null, 'end')
+      ]
+    },
+    body: {
+      type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none', contents: [
+        { type: 'box', layout: 'vertical', margin: 'none', spacing: 'sm', contents: summaryRows }
+      ]
+    }
   };
 
-  var bubbles = [leadCard].concat(due.map(function(a){ return plotBubble(a, '#EF6C00'); }));
   var messages = [];
-  for (var j = 0; j < bubbles.length; j += 12) {
-    messages.push({ type:'flex', altText:'ครบกำหนด ' + monthLabel + ' (' + due.length + ')',
-      contents:{ type:'carousel', contents: bubbles.slice(j, j + 12) }});
-    if (messages.length >= 5) break;
+  // แถวแรก: การ์ดสรุปเท่านั้น
+  messages.push({
+    type: 'flex',
+    altText: 'ครบกำหนด ' + monthLabel + ' (' + due.length + ' แปลง)',
+    contents: summaryCard
+  });
+
+  // แถวสองเป็นต้นไป: การ์ดรายแปลง Carousel
+  var plotCards = due.map(function(a) { return plotBubble(a, '#EF6C00'); });
+  for (var j = 0; j < plotCards.length; j += 12) {
+    messages.push({
+      type: 'flex',
+      altText: 'แปลงครบกำหนด ' + monthLabel + (plotCards.length > 12 ? ' (ชุดที่ ' + (Math.floor(j/12) + 1) + ')' : ''),
+      contents: { type: 'carousel', contents: plotCards.slice(j, j + 12) }
+    });
+    if (messages.length >= 5) break; // LINE ส่งได้สูงสุด 5 ข้อความ/reply
   }
+
   return messages;
 }
 
