@@ -6228,7 +6228,7 @@ function exitUserSimulation() {
             console.log('✅ Updated localStorage with admin sessionKey:', newSessionKey);
         }
         
-        const adminName = (originalAdminData && originalAdminData.username) || 'SuperiCez';
+        const adminName = (originalAdminData && originalAdminData.username) || 'Admin';
         const adminClass = (originalAdminData && originalAdminData.class) || 'admin';
         
         currentUser = adminName;
@@ -6284,6 +6284,8 @@ function exitUserSimulation() {
         }, 3000);
     }
     
+    const clientAdminName = (originalAdminData && originalAdminData.username) || '';
+
     google.script.run
         .withSuccessHandler(function(result) {
             const response = (typeof result === 'string') ? JSON.parse(result) : result;
@@ -6299,7 +6301,7 @@ function exitUserSimulation() {
             console.error('restoreAdminSession failed, restoring local admin:', error);
             completeAdminRestore();
         })
-        .restoreAdminSession(currentSimulationKey);
+        .restoreAdminSession(currentSimulationKey, clientAdminName);
 }
 
 function updateUserDisplayForSimulation(user) {

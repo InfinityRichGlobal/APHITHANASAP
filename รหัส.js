@@ -3615,7 +3615,7 @@ function simulateUserSession(userData, sessionKey) {
  * คืนค่า Admin Session
  */
 
-function restoreAdminSession(adminSimulationKey) {
+function restoreAdminSession(adminSimulationKey, fallbackAdminUsername) {
     try {
         let adminSession = null;
         let sessionData = null;
@@ -3646,12 +3646,12 @@ function restoreAdminSession(adminSimulationKey) {
             }
         }
         
-        // Fallback 2: ค่าเริ่มต้น Admin เสมอเพื่อป้องกันผู้ดูแลระบบติดค้าง
+        // Fallback 2: ใช้ชื่อแอดมินประจำเครื่องที่ส่งมา (รองรับแอดมินหลายคนอย่างอิสระ)
         if (!adminSession) {
             adminSession = {
-                username: 'SuperiCez',
+                username: fallbackAdminUsername || 'Admin',
                 class: 'admin',
-                email: 'admin'
+                email: fallbackAdminUsername || 'admin'
             };
         }
         
