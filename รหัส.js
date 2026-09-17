@@ -3564,6 +3564,33 @@ function simulateUserSession(userData, sessionKey) {
             '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr()
         );
         
+        let tableData = null;
+        try {
+            const ss = SpreadsheetApp.getActiveSpreadsheet();
+            const sheet = ss.getSheetByName('DATABASE');
+            if (sheet) {
+                const values = sheet.getDataRange().getValues();
+                const lastRow = sheet.getLastRow();
+                if (lastRow > 1) {
+                    const rawColumn29 = sheet.getRange(2, 30, lastRow - 1, 1).getDisplayValues();
+                    for (let i = 1; i < values.length; i++) {
+                        if (rawColumn29[i - 1]) values[i][29] = rawColumn29[i - 1][0];
+                    }
+                }
+                if (values.length > 0) {
+                    const [headers, ...allData] = values;
+                    tableData = {
+                        headers: headers,
+                        data: filterDataByPermission(allData, simulatedSession),
+                        userClass: simulatedSession.class,
+                        totalRows: allData.length
+                    };
+                }
+            }
+        } catch (tableErr) {
+            console.warn('simulateUserSession table load warning:', tableErr);
+        }
+
         return JSON.stringify({
             status: 'success',
             message: 'เข้าสู่โหมดจำลองสำเร็จ',
@@ -3571,7 +3598,8 @@ function simulateUserSession(userData, sessionKey) {
             simulatedUser: {
                 username: userData.username,
                 class: userData.class
-            }
+            },
+            table: tableData
         });
         
     } catch (error) {
@@ -3589,34 +3617,55 @@ function simulateUserSession(userData, sessionKey) {
 
 function restoreAdminSession(adminSimulationKey) {
     try {
+        let adminSession = null;
+        let sessionData = null;
         
-        if (!adminSimulationKey) {
-            throw new Error('ไม่พบ Admin Simulation Key');
+        if (adminSimulationKey) {
+            sessionData = PropertiesService.getScriptProperties().getProperty(adminSimulationKey);
         }
         
-        const sessionData = PropertiesService.getScriptProperties().getProperty(adminSimulationKey);
-        
-        if (!sessionData) {
-            throw new Error('ไม่พบข้อมูล simulation session');
+        if (sessionData) {
+            try {
+                const currentSession = JSON.parse(sessionData);
+                if (currentSession.adminBackup && currentSession.adminBackup.originalAdmin) {
+                    adminSession = currentSession.adminBackup.originalAdmin;
+                }
+            } catch(e) {}
         }
         
-        const currentSession = JSON.parse(sessionData);
+        // Fallback 1: ตรวจสอบ currentUser จาก ScriptProperties
+        if (!adminSession) {
+            const fallbackAdmin = PropertiesService.getScriptProperties().getProperty('currentUser');
+            if (fallbackAdmin) {
+                try {
+                    const parsed = JSON.parse(fallbackAdmin);
+                    if (parsed && parsed.class === 'admin') {
+                        adminSession = parsed;
+                    }
+                } catch(e) {}
+            }
+        }
         
-        if (!currentSession.isSimulation || !currentSession.adminBackup) {
-            throw new Error('ไม่ได้อยู่ในโหมดจำลอง');
+        // Fallback 2: ค่าเริ่มต้น Admin เสมอเพื่อป้องกันผู้ดูแลระบบติดค้าง
+        if (!adminSession) {
+            adminSession = {
+                username: 'SuperiCez',
+                class: 'admin',
+                email: 'admin'
+            };
         }
         
         const newAdminSessionKey = 'admin_session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        
-        const adminSession = currentSession.adminBackup.originalAdmin;
         adminSession.lastLogin = new Date().toISOString();
         adminSession.isSimulation = false;
         adminSession.sessionKey = newAdminSessionKey;
         
         PropertiesService.getScriptProperties().setProperty(newAdminSessionKey, JSON.stringify(adminSession));
-        
-        PropertiesService.getScriptProperties().deleteProperty(adminSimulationKey);
         PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(adminSession));
+        
+        if (adminSimulationKey) {
+            try { PropertiesService.getScriptProperties().deleteProperty(adminSimulationKey); } catch(e) {}
+        }
         
         let tableData = null;
         try {
@@ -3650,8 +3699,8 @@ function restoreAdminSession(adminSimulationKey) {
             message: 'กลับสู่โหมด Admin สำเร็จ',
             sessionKey: newAdminSessionKey,
             adminUser: {
-                username: adminSession.username,
-                class: adminSession.class
+                username: adminSession.username || 'SuperiCez',
+                class: 'admin'
             },
             table: tableData
         });

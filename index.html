@@ -4734,7 +4734,13 @@ display: flex;
     'uploadFilesByCategory',
     'uploadFilesToSpecificFolder',
     'saveFullFormData',
-    'savePaymentData'
+    'savePaymentData',
+    'deletePaymentRecord',
+    'deleteFile',
+    'deleteRowCompletely',
+    'deleteMemberData',
+    'simulateUserSession',
+    'restoreAdminSession'
   ]);
 
   function executeRpc(fnName, args, retriesLeft, delayMs) {
@@ -5462,33 +5468,7 @@ function downloadCurrentLightboxImage() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    progressModal = new bootstrap.Modal(document.getElementById('progressModal'));
-    assetModal = new bootstrap.Modal(document.getElementById('assetModal'));
-    assetNameModal = new bootstrap.Modal(document.getElementById('assetNameModal'));
-    paymentHistoryModal = new bootstrap.Modal(document.getElementById('paymentHistoryModal'));
-    galleryModal = new bootstrap.Modal(document.getElementById('galleryModal'));
-    successModal = new bootstrap.Modal(document.getElementById('successModal'));
-    
-    checkUserSession();
 
-    // เติมชื่อผู้ใช้ที่จำไว้ + โฟกัสช่องแรกอัตโนมัติ
-    (function() {
-        var savedUser = localStorage.getItem('rememberedUsername');
-        var userInput = document.getElementById('username');
-        var pwInput = document.getElementById('password');
-        var rememberBox = document.getElementById('rememberMe');
-        if (savedUser && userInput) {
-            userInput.value = savedUser;
-            if (rememberBox) rememberBox.checked = true;
-            if (pwInput) pwInput.focus();      // มีชื่อแล้ว โฟกัสรหัสผ่านเลย
-        } else if (userInput) {
-            userInput.focus();                 // ยังไม่มี โฟกัสช่องชื่อ
-        }
-    })();
-
-    initializeEventListeners();
-});
 
 function replaceTerms() {
     document.querySelectorAll('*').forEach(el => {
@@ -6207,14 +6187,20 @@ function simulateUserLogin(user) {
                 
                 updateUserDisplayForSimulation(user);
                 
-                updateProgress('กำลังโหลดข้อมูล...', 70);
-                
-                setTimeout(() => {
+                // ✅ แสดงข้อมูลตารางของ User ที่จำลองทันทีจาก response โดยไม่ต้องรอหรือยิงแยกรอบ
+                if (response.table && response.table.headers && response.table.data) {
+                    currentUserClass = response.table.userClass || user.class;
+                    buildTable(response.table.headers, response.table.data);
+                    updateStatistics(response.table.data);
+                    const wrap = document.getElementById('table-wrapper');
+                    if (wrap) wrap.style.display = 'block';
+                    hideProgress();
+                    showSimulationAlert(user);
+                } else {
                     loadTable();
                     hideProgress();
-                    
                     showSimulationAlert(user);
-                }, 1000);
+                }
                 
             } else {
                 hideProgress();
@@ -6231,85 +6217,87 @@ function simulateUserLogin(user) {
 function exitUserSimulation() {
     console.log('=== EXIT USER SIMULATION ===');
     
-    if (!originalAdminData) {
-        location.reload();
-        return;
-    }
-    
-    showProgress('กำลังกลับสู่ Admin...', 'กำลังคืนค่าการตั้งค่า', 50);
+    showProgress('กำลังกลับสู่ Admin...', 'กำลังคืนค่าสิทธิ์ผู้ดูแลระบบ', 50);
     
     const currentSimulationKey = localStorage.getItem('userSessionKey');
+    
+    // ✅ ฟังก์ชันกู้คืนสถานะ Admin อย่างปลอดภัย (ทำงานได้เสมอ ไม่ติดค้าง)
+    function completeAdminRestore(newSessionKey, tableData) {
+        if (newSessionKey) {
+            localStorage.setItem('userSessionKey', newSessionKey);
+            console.log('✅ Updated localStorage with admin sessionKey:', newSessionKey);
+        }
+        
+        const adminName = (originalAdminData && originalAdminData.username) || 'SuperiCez';
+        const adminClass = (originalAdminData && originalAdminData.class) || 'admin';
+        
+        currentUser = adminName;
+        currentUserClass = adminClass;
+        isSimulatingUser = false;
+        
+        const userInfoContainer = document.getElementById('userInfo');
+        if (userInfoContainer) {
+            const oldButtons = userInfoContainer.querySelectorAll('button');
+            oldButtons.forEach(btn => btn.remove());
+        }
+        
+        updateUserDisplay({
+            username: currentUser,
+            class: currentUserClass
+        });
+        
+        updateUserInterface('admin');
+        updateAdminOnlyElements('admin');
+        
+        // ล้างฟิลเตอร์ที่อาจค้างจากโหมดจำลอง
+        try {
+            if (typeof clearAllFilters === 'function') clearAllFilters();
+        } catch(e) {}
+
+        hideProgress();
+        
+        // ถ้ามีข้อมูลตาราง Admin ส่งกลับมาให้เรนเดอร์ทันที มิฉะนั้นโหลดใหม่ผ่าน loadTable
+        if (tableData && tableData.headers && tableData.data) {
+            currentUserClass = 'admin';
+            buildTable(tableData.headers, tableData.data);
+            updateStatistics(tableData.data);
+            const wrap = document.getElementById('table-wrapper');
+            if (wrap) wrap.style.display = 'block';
+        } else {
+            loadTable();
+        }
+        
+        const exitAlert = `
+            <div class="alert alert-success alert-dismissible fade show" 
+                 style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;">
+                <i class="bi bi-check-circle me-2"></i>
+                <strong>กลับสู่โหมด Admin เรียบร้อย (${currentUser})</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', exitAlert);
+        
+        setTimeout(function() {
+            const alert = document.querySelector('.alert-success');
+            if (alert) alert.remove();
+        }, 3000);
+    }
     
     google.script.run
         .withSuccessHandler(function(result) {
             const response = (typeof result === 'string') ? JSON.parse(result) : result;
             
-            if (response.status === 'success') {
-                localStorage.setItem('userSessionKey', response.sessionKey);
-                console.log('✅ Updated localStorage with admin sessionKey:', response.sessionKey);
-                
-                const adminName = (response.adminUser && response.adminUser.username) || (originalAdminData && originalAdminData.username) || 'SuperiCez';
-                const adminClass = (response.adminUser && response.adminUser.class) || (originalAdminData && originalAdminData.class) || 'admin';
-                
-                currentUser = adminName;
-                currentUserClass = adminClass;
-                isSimulatingUser = false;
-                
-                const userInfoContainer = document.getElementById('userInfo');
-                if (userInfoContainer) {
-                    const oldButtons = userInfoContainer.querySelectorAll('button');
-                    oldButtons.forEach(btn => btn.remove());
-                }
-                
-                updateUserDisplay({
-                    username: currentUser,
-                    class: currentUserClass
-                });
-                
-                updateUserInterface('admin');
-                updateAdminOnlyElements('admin');
-                
-                // ล้างฟิลเตอร์ที่อาจค้างจากโหมดจำลอง
-                try {
-                    if (typeof clearAllFilters === 'function') clearAllFilters();
-                } catch(e) {}
-
-                hideProgress();
-                
-                // ✅ ถ้า server ส่งข้อมูลตาราง admin กลับมาด้วย ให้เรนเดอร์ทันทีโดยไม่ต้องยิง loadTable ซ้ำ
-                if (response.table && response.table.headers && response.table.data) {
-                    buildTable(response.table.headers, response.table.data);
-                    updateStatistics(response.table.data);
-                    const wrap = document.getElementById('table-wrapper');
-                    if (wrap) wrap.style.display = 'block';
-                } else {
-                    loadTable();
-                }
-                
-                const exitAlert = `
-                    <div class="alert alert-success alert-dismissible fade show" 
-                         style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;">
-                        <i class="bi bi-check-circle me-2"></i>
-                        <strong>กลับสู่โหมด Admin เรียบร้อย (${currentUser})</strong>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                `;
-                
-                document.body.insertAdjacentHTML('beforeend', exitAlert);
-                
-                setTimeout(function() {
-                    const alert = document.querySelector('.alert-success');
-                    if (alert) alert.remove();
-                }, 3000);
-                
+            if (response && response.status === 'success') {
+                completeAdminRestore(response.sessionKey, response.table);
             } else {
-                hideProgress();
-                showAlert('เกิดข้อผิดพลาด: ' + response.message);
+                console.warn('Backend restore returned non-success, restoring local admin:', response);
+                completeAdminRestore();
             }
         })
         .withFailureHandler(function(error) {
-            hideProgress();
-            showAlert('เกิดข้อผิดพลาดในการกลับสู่ Admin: ' + error.message);
+            console.error('restoreAdminSession failed, restoring local admin:', error);
+            completeAdminRestore();
         })
         .restoreAdminSession(currentSimulationKey);
 }
@@ -8701,8 +8689,22 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('Modals initialized successfully');
             
+            // เติมชื่อผู้ใช้ที่จำไว้ + โฟกัสช่องแรกอัตโนมัติ
+            (function() {
+                var savedUser = localStorage.getItem('rememberedUsername');
+                var userInput = document.getElementById('username');
+                var pwInput = document.getElementById('password');
+                var rememberBox = document.getElementById('rememberMe');
+                if (savedUser && userInput) {
+                    userInput.value = savedUser;
+                    if (rememberBox) rememberBox.checked = true;
+                    if (pwInput) pwInput.focus();
+                } else if (userInput) {
+                    userInput.focus();
+                }
+            })();
+
             checkUserSession();
-            
             initializeEventListeners();
             
         } catch (error) {
