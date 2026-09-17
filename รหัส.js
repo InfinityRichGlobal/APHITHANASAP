@@ -1124,6 +1124,7 @@ function handleWebApp(e) {
       authenticateUser: authenticateUser,
       checkSession: checkSession,
       logout: logout,
+      getInitialAppData: getInitialAppData,
       loadTableWithSession: loadTableWithSession,
       safeLoadTable: safeLoadTable,
       getDropdownOptions: getDropdownOptions,
@@ -2192,6 +2193,129 @@ function getInvestorList() {
     
   } catch (error) {
     return JSON.stringify([]);
+  }
+}
+
+// ============================================================
+// ✅ OPTIMIZED: รวม Request ทั้งหมดตอนเปิดหน้าเว็บในคำสั่งเดียว
+// ลดการยิงแยกรอบจาก 8 requests เหลือเพียง 1 request เดียว
+// ============================================================
+function getInitialAppData(sessionKey) {
+  try {
+    const currentUser = getCurrentUserWithSessionKey(sessionKey);
+    if (!currentUser) {
+      return JSON.stringify({
+        status: 'error',
+        message: 'SESSION_EXPIRED'
+      });
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 1. อ่านข้อมูล DATABASE
+    const dbSheet = ss.getSheetByName('DATABASE');
+    if (!dbSheet) {
+      throw new Error('ไม่พบ Sheet ชื่อ DATABASE');
+    }
+
+    const values = dbSheet.getDataRange().getValues();
+    const lastRow = dbSheet.getLastRow();
+
+    if (lastRow > 1) {
+      const rawColumn29 = dbSheet.getRange(2, 30, lastRow - 1, 1).getDisplayValues();
+      for (let i = 1; i < values.length; i++) {
+        if (rawColumn29[i - 1]) {
+          values[i][29] = rawColumn29[i - 1][0];
+        }
+      }
+    }
+
+    let headers = [];
+    let filteredData = [];
+    if (values.length > 0) {
+      headers = values[0];
+      const allData = values.slice(1);
+      filteredData = filterDataByPermission(allData, currentUser);
+    }
+
+    // 2. อ่านตัวเลือก Dropdown จาก DETAIL (อ่านรอบเดียวครบทุกคอลัมน์)
+    let detailSheet = ss.getSheetByName('DETAIL');
+    if (!detailSheet) {
+      detailSheet = createDetailSheet(ss);
+    }
+    const detailValues = detailSheet.getDataRange().getValues();
+    const dropdowns = {};
+    if (detailValues.length > 1) {
+      const detailHeaders = detailValues[0];
+      for (let c = 0; c < detailHeaders.length; c++) {
+        const colName = String(detailHeaders[c]).trim();
+        if (!colName) continue;
+        const colList = [];
+        for (let r = 1; r < detailValues.length; r++) {
+          const val = detailValues[r][c];
+          if (val !== '' && val !== null && val !== undefined) {
+            colList.push(String(val).trim());
+          }
+        }
+        dropdowns[colName] = [...new Set(colList)];
+      }
+    }
+
+    // 3. อ่านรายชื่อนายทุน (INVESTORS)
+    const investors = [];
+    let invSheet = ss.getSheetByName('INVESTORS');
+    if (invSheet) {
+      const invValues = invSheet.getDataRange().getValues();
+      for (let i = 1; i < invValues.length; i++) {
+        if (invValues[i][0] && invValues[i][5] === 'ใช้งาน') {
+          investors.push({
+            name: invValues[i][0],
+            phone: invValues[i][1] || '',
+            email: invValues[i][2] || ''
+          });
+        }
+      }
+    }
+
+    // 4. อ่านรายชื่อนายหน้า (BROKERS)
+    const brokers = [];
+    let brkSheet = ss.getSheetByName('BROKERS');
+    if (brkSheet) {
+      const brkValues = brkSheet.getDataRange().getValues();
+      for (let i = 1; i < brkValues.length; i++) {
+        if (brkValues[i][0] && brkValues[i][5] === 'ใช้งาน') {
+          brokers.push({
+            name: brkValues[i][0],
+            phone: brkValues[i][1] || '',
+            email: brkValues[i][2] || ''
+          });
+        }
+      }
+    }
+
+    return JSON.stringify({
+      status: 'success',
+      table: {
+        headers: headers,
+        data: filteredData,
+        userClass: currentUser.class,
+        totalRows: filteredData.length
+      },
+      dropdowns: dropdowns,
+      investors: investors,
+      brokers: brokers,
+      user: {
+        username: currentUser.username,
+        class: currentUser.class
+      }
+    });
+
+  } catch (error) {
+    console.error('getInitialAppData error:', error);
+    return JSON.stringify({
+      status: 'error',
+      message: error.toString()
+    });
   }
 }
 
@@ -3272,6 +3396,21 @@ function uploadFilesToSpecificFolder(fileData, folderId) {
       const file = fileData[i];
       
       try {
+        // ตรวจสอบไฟล์ซ้ำในโฟลเดอร์เพื่อป้องกันการอัปโหลดเบิ้ล
+        const existingFiles = folder.getFilesByName(file.name);
+        if (existingFiles.hasNext()) {
+          const existingFile = existingFiles.next();
+          uploadedFiles.push({
+            id: existingFile.getId(),
+            name: existingFile.getName(),
+            size: existingFile.getSize(),
+            mimeType: file.mimeType,
+            downloadUrl: `https://drive.google.com/uc?export=download&id=${existingFile.getId()}`,
+            viewUrl: `https://lh3.googleusercontent.com/d/${existingFile.getId()}`
+          });
+          continue;
+        }
+
         const base64Data = file.data.split(',')[1];
         const bytes = Utilities.base64Decode(base64Data);
         const blob = Utilities.newBlob(bytes, file.mimeType, file.name);
@@ -3288,7 +3427,6 @@ function uploadFilesToSpecificFolder(fileData, folderId) {
           downloadUrl: `https://drive.google.com/uc?export=download&id=${driveFile.getId()}`,
           viewUrl: `https://lh3.googleusercontent.com/d/${driveFile.getId()}`
         });
-        
         
       } catch (fileError) {
         console.error(`Error uploading file ${file.name}:`, fileError);
@@ -3478,7 +3616,33 @@ function restoreAdminSession(adminSimulationKey) {
         
         PropertiesService.getScriptProperties().deleteProperty(adminSimulationKey);
         
-        
+        let tableData = null;
+        try {
+            const ss = SpreadsheetApp.getActiveSpreadsheet();
+            const sheet = ss.getSheetByName('DATABASE');
+            if (sheet) {
+                const values = sheet.getDataRange().getValues();
+                const lastRow = sheet.getLastRow();
+                if (lastRow > 1) {
+                    const rawColumn29 = sheet.getRange(2, 30, lastRow - 1, 1).getDisplayValues();
+                    for (let i = 1; i < values.length; i++) {
+                        if (rawColumn29[i - 1]) values[i][29] = rawColumn29[i - 1][0];
+                    }
+                }
+                if (values.length > 0) {
+                    const [headers, ...allData] = values;
+                    tableData = {
+                        headers: headers,
+                        data: filterDataByPermission(allData, adminSession),
+                        userClass: adminSession.class,
+                        totalRows: allData.length
+                    };
+                }
+            }
+        } catch (tableErr) {
+            console.warn('restoreAdminSession table load warning:', tableErr);
+        }
+
         return JSON.stringify({
             status: 'success',
             message: 'กลับสู่โหมด Admin สำเร็จ',
@@ -3486,7 +3650,8 @@ function restoreAdminSession(adminSimulationKey) {
             adminUser: {
                 username: adminSession.username,
                 class: adminSession.class
-            }
+            },
+            table: tableData
         });
         
     } catch (error) {
@@ -3584,7 +3749,21 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
     
     fileData.forEach(function(file, index) {
       try {
-        
+        // ตรวจสอบไฟล์ซ้ำในโฟลเดอร์เพื่อป้องกันการอัปโหลดเบิ้ล
+        const existingFiles = targetFolder.getFilesByName(file.name);
+        if (existingFiles.hasNext()) {
+          const existingFile = existingFiles.next();
+          uploadedFiles.push({
+            id: existingFile.getId(),
+            name: existingFile.getName(),
+            url: existingFile.getUrl(),
+            viewUrl: 'https://drive.google.com/file/d/' + existingFile.getId() + '/view',
+            directUrl: 'https://lh3.googleusercontent.com/d/' + existingFile.getId(),
+            folderId: targetFolderId
+          });
+          return;
+        }
+
         const blob = Utilities.newBlob(
           Utilities.base64Decode(file.data.split(',')[1]),
           file.mimeType,
@@ -3603,7 +3782,6 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
           directUrl: 'https://lh3.googleusercontent.com/d/' + driveFile.getId(),
           folderId: targetFolderId
         });
-        
         
       } catch (fileError) {
         console.error('❌ FILE UPLOAD ERROR:', fileError.toString());
