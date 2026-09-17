@@ -10717,7 +10717,116 @@ function loadUsersData() {
         .getMemberData('USERS');
 }
 
+function escapeMemberHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function escapeMemberAttr(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;');
+}
+
+function copyBrokerLoginInfo(index) {
+    const broker = window.currentBrokersList && window.currentBrokersList[index];
+    if (!broker) return;
+    const name = broker.name || '-';
+    let id = '-';
+    let pass = '-';
+    if (broker.loginInfo) {
+        id = broker.loginInfo.email || broker.email || '-';
+        pass = broker.loginInfo.password || '-';
+    } else if (broker.email) {
+        id = broker.email;
+    }
+    doCopyMemberLoginText(name, id, pass);
+}
+
+function copyInvestorLoginInfo(index) {
+    const investor = window.currentInvestorsList && window.currentInvestorsList[index];
+    if (!investor) return;
+    const name = investor.name || '-';
+    let id = '-';
+    let pass = '-';
+    if (investor.loginInfo) {
+        id = investor.loginInfo.email || investor.email || '-';
+        pass = investor.loginInfo.password || '-';
+    } else if (investor.email) {
+        id = investor.email;
+    }
+    doCopyMemberLoginText(name, id, pass);
+}
+
+function copyUserLoginInfo(index) {
+    const user = window.currentUsersList && window.currentUsersList[index];
+    if (!user) return;
+    const name = user.username || (user.linkedInfo && user.linkedInfo !== 'ไม่มี' ? user.linkedInfo : '') || user.email || '-';
+    const id = user.email || '-';
+    const pass = user.password || '-';
+    doCopyMemberLoginText(name, id, pass);
+}
+
+function doCopyMemberLoginText(name, id, pass) {
+    const textToCopy = name + '\nID : ' + id + '\nPASS : ' + pass;
+    
+    const fallbackCopy = function() {
+        const ta = document.createElement('textarea');
+        ta.value = textToCopy;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand('copy');
+        } catch (e) {
+            console.error('execCommand error:', e);
+        }
+        document.body.removeChild(ta);
+        notifyMemberCopied(textToCopy);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(textToCopy).then(function() {
+            notifyMemberCopied(textToCopy);
+        }).catch(function() {
+            fallbackCopy();
+        });
+    } else {
+        fallbackCopy();
+    }
+}
+
+function notifyMemberCopied(text) {
+    if (typeof Swal !== 'undefined') {
+        const safeText = escapeMemberHtml(text);
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'คัดลอกข้อมูลสำเร็จ!',
+            html: '<pre style="text-align: left; margin: 6px 0 0 0; font-size: 13px; font-weight: bold; background: rgba(0,0,0,0.06); padding: 8px 12px; border-radius: 6px; font-family: monospace; line-height: 1.6;">' + safeText + '</pre>',
+            showConfirmButton: false,
+            timer: 3500,
+            timerProgressBar: true
+        });
+    } else {
+        showAlert('✅ คัดลอกข้อมูลสำเร็จ:\n' + text);
+    }
+}
+
 function buildBrokersTable(brokers) {
+    window.currentBrokersList = brokers || [];
     const tbody = document.getElementById('brokersTableBody');
     
     if (!brokers || brokers.length === 0) {
@@ -10733,12 +10842,15 @@ function buildBrokersTable(brokers) {
             '<span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>ไม่มี Login</span>';
         
         tableHTML += '<tr>';
-        tableHTML += '<td><strong>' + broker.name + '</strong></td>';
-        tableHTML += '<td>' + (broker.phone || '-') + '</td>';
-        tableHTML += '<td>' + (broker.email || '-') + '</td>';
+        tableHTML += '<td><strong>' + escapeMemberHtml(broker.name) + '</strong></td>';
+        tableHTML += '<td>' + escapeMemberHtml(broker.phone || '-') + '</td>';
+        tableHTML += '<td>' + escapeMemberHtml(broker.email || '-') + '</td>';
         tableHTML += '<td>' + statusBadge + '</td>';
         tableHTML += '<td>' + loginInfo + '</td>';
         tableHTML += '<td class="text-nowrap">';
+        tableHTML += '<button class="btn btn-sm btn-primary me-1" onclick="copyBrokerLoginInfo(' + index + ')" title="คัดลอกข้อมูล Login (3 บรรทัด)">';
+        tableHTML += '<i class="bi bi-clipboard"></i>';
+        tableHTML += '</button>';
         
         if (broker.hasLogin) {
             tableHTML += '<button class="btn btn-sm btn-info me-1" onclick="showLoginInfo(\'BROKERS\', ' + index + ')" title="ดูข้อมูล Login">';
@@ -10749,7 +10861,7 @@ function buildBrokersTable(brokers) {
         tableHTML += '<button class="btn btn-sm btn-warning me-1" onclick="editMember(\'BROKERS\', ' + index + ')" title="แก้ไข">';
         tableHTML += '<i class="bi bi-pencil"></i>';
         tableHTML += '</button>';
-        tableHTML += '<button class="btn btn-sm btn-danger" onclick="deleteMember(\'BROKERS\', ' + index + ', \'' + broker.name + '\')" title="ลบ">';
+        tableHTML += '<button class="btn btn-sm btn-danger" onclick="deleteMember(\'BROKERS\', ' + index + ', \'' + escapeMemberAttr(broker.name) + '\')" title="ลบ">';
         tableHTML += '<i class="bi bi-trash"></i>';
         tableHTML += '</button>';
         tableHTML += '</td>';
@@ -10760,6 +10872,7 @@ function buildBrokersTable(brokers) {
 }
 
 function buildInvestorsTable(investors) {
+    window.currentInvestorsList = investors || [];
     const tbody = document.getElementById('investorsTableBody');
     
     if (!investors || investors.length === 0) {
@@ -10775,12 +10888,15 @@ function buildInvestorsTable(investors) {
             '<span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>ไม่มี Login</span>';
         
         tableHTML += '<tr>';
-        tableHTML += '<td><strong>' + investor.name + '</strong></td>';
-        tableHTML += '<td>' + (investor.phone || '-') + '</td>';
-        tableHTML += '<td>' + (investor.email || '-') + '</td>';
+        tableHTML += '<td><strong>' + escapeMemberHtml(investor.name) + '</strong></td>';
+        tableHTML += '<td>' + escapeMemberHtml(investor.phone || '-') + '</td>';
+        tableHTML += '<td>' + escapeMemberHtml(investor.email || '-') + '</td>';
         tableHTML += '<td>' + statusBadge + '</td>';
         tableHTML += '<td>' + loginInfo + '</td>';
         tableHTML += '<td class="text-nowrap">';
+        tableHTML += '<button class="btn btn-sm btn-primary me-1" onclick="copyInvestorLoginInfo(' + index + ')" title="คัดลอกข้อมูล Login (3 บรรทัด)">';
+        tableHTML += '<i class="bi bi-clipboard"></i>';
+        tableHTML += '</button>';
         
         if (investor.hasLogin) {
             tableHTML += '<button class="btn btn-sm btn-info me-1" onclick="showLoginInfo(\'INVESTORS\', ' + index + ')" title="ดูข้อมูล Login">';
@@ -10791,7 +10907,7 @@ function buildInvestorsTable(investors) {
         tableHTML += '<button class="btn btn-sm btn-warning me-1" onclick="editMember(\'INVESTORS\', ' + index + ')" title="แก้ไข">';
         tableHTML += '<i class="bi bi-pencil"></i>';
         tableHTML += '</button>';
-        tableHTML += '<button class="btn btn-sm btn-danger" onclick="deleteMember(\'INVESTORS\', ' + index + ', \'' + investor.name + '\')" title="ลบ">';
+        tableHTML += '<button class="btn btn-sm btn-danger" onclick="deleteMember(\'INVESTORS\', ' + index + ', \'' + escapeMemberAttr(investor.name) + '\')" title="ลบ">';
         tableHTML += '<i class="bi bi-trash"></i>';
         tableHTML += '</button>';
         tableHTML += '</td>';
@@ -10802,6 +10918,7 @@ function buildInvestorsTable(investors) {
 }
 
 function buildUsersTable(users) {
+    window.currentUsersList = users || [];
     const tbody = document.getElementById('usersTableBody');
     
     if (!users || users.length === 0) {
@@ -10815,19 +10932,22 @@ function buildUsersTable(users) {
         const classBadge = getClassBadge(user.class);
         
         tableHTML += '<tr>';
-        tableHTML += '<td><code>' + user.email + '</code></td>';
-        tableHTML += '<td><strong>' + user.username + '</strong></td>';
+        tableHTML += '<td><code>' + escapeMemberHtml(user.email) + '</code></td>';
+        tableHTML += '<td><strong>' + escapeMemberHtml(user.username) + '</strong></td>';
         tableHTML += '<td>' + classBadge + '</td>';
-        tableHTML += '<td><small>' + user.linkedInfo + '</small></td>';
+        tableHTML += '<td><small>' + escapeMemberHtml(user.linkedInfo) + '</small></td>';
         tableHTML += '<td>' + statusBadge + '</td>';
         tableHTML += '<td class="text-nowrap">';
+        tableHTML += '<button class="btn btn-sm btn-primary me-1" onclick="copyUserLoginInfo(' + index + ')" title="คัดลอกข้อมูล Login (3 บรรทัด)">';
+        tableHTML += '<i class="bi bi-clipboard"></i>';
+        tableHTML += '</button>';
         tableHTML += '<button class="btn btn-sm btn-info me-1" onclick="showUserDetails(' + index + ')" title="ดูรายละเอียด">';
         tableHTML += '<i class="bi bi-eye"></i>';
         tableHTML += '</button>';
         tableHTML += '<button class="btn btn-sm btn-warning me-1" onclick="resetPassword(' + index + ')" title="รีเซ็ตรหัสผ่าน">';
         tableHTML += '<i class="bi bi-key"></i>';
         tableHTML += '</button>';
-        tableHTML += '<button class="btn btn-sm btn-danger" onclick="deleteMember(\'USERS\', ' + index + ', \'' + user.username + '\')" title="ลบ">';
+        tableHTML += '<button class="btn btn-sm btn-danger" onclick="deleteMember(\'USERS\', ' + index + ', \'' + escapeMemberAttr(user.username) + '\')" title="ลบ">';
         tableHTML += '<i class="bi bi-trash"></i>';
         tableHTML += '</button>';
         tableHTML += '</td>';
@@ -10856,16 +10976,57 @@ function getClassBadge(userClass) {
         'super_user1': '<span class="badge bg-info">นายหน้า 1</span>',
         'super_user2': '<span class="badge bg-info">นายหน้า 2</span>',
         'super_user3': '<span class="badge bg-info">นายหน้า 3</span>',
+        'super_user': '<span class="badge bg-info">นายหน้า</span>',
         'user1': '<span class="badge bg-success">นายทุน 1</span>',
         'user2': '<span class="badge bg-success">นายทุน 2</span>',
-        'user3': '<span class="badge bg-success">นายทุน 3</span>'
+        'user3': '<span class="badge bg-success">นายทุน 3</span>',
+        'user': '<span class="badge bg-success">นายทุน</span>'
     };
     
     return classMap[userClass] || '<span class="badge bg-secondary">' + userClass + '</span>';
 }
 
 function showLoginInfo(memberType, index) {
-    console.log('Show login info for:', memberType, index);
+    let item = null;
+    let name = '';
+    let id = '-';
+    let pass = '-';
+    let typeTitle = '';
+    
+    if (memberType === 'BROKERS') {
+        item = window.currentBrokersList && window.currentBrokersList[index];
+        typeTitle = 'นายหน้า';
+    } else if (memberType === 'INVESTORS') {
+        item = window.currentInvestorsList && window.currentInvestorsList[index];
+        typeTitle = 'นายทุน';
+    }
+    
+    if (item) {
+        name = item.name || '-';
+        id = (item.loginInfo && item.loginInfo.email) || item.email || '-';
+        pass = (item.loginInfo && item.loginInfo.password) || '-';
+    }
+    
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: '🔑 ข้อมูล Login (' + typeTitle + ')',
+            html: '<div style="text-align: left; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: 14px; line-height: 1.8;">' +
+                  '<div><strong>' + escapeMemberHtml(name) + '</strong></div>' +
+                  '<div><strong>ID :</strong> <code>' + escapeMemberHtml(id) + '</code></div>' +
+                  '<div><strong>PASS :</strong> <code>' + escapeMemberHtml(pass) + '</code></div>' +
+                  '</div>',
+            showCancelButton: true,
+            confirmButtonText: '<i class="bi bi-clipboard me-1"></i> คัดลอก 3 บรรทัด',
+            cancelButtonText: 'ปิด',
+            confirmButtonColor: '#0d6efd'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                doCopyMemberLoginText(name, id, pass);
+            }
+        });
+    } else {
+        doCopyMemberLoginText(name, id, pass);
+    }
 }
 
 function editMember(memberType, index) {
@@ -10905,8 +11066,36 @@ function deleteMember(memberType, index, memberName) {
 }
 
 function showUserDetails(index) {
-    console.log('Show user details:', index);
-    showAlert('ฟีเจอร์ดูรายละเอียดจะพัฒนาในเวรชันถัดไป');
+    const user = window.currentUsersList && window.currentUsersList[index];
+    if (!user) return;
+    
+    const name = user.username || (user.linkedInfo && user.linkedInfo !== 'ไม่มี' ? user.linkedInfo : '') || user.email || '-';
+    const id = user.email || '-';
+    const pass = user.password || '-';
+    
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            title: '👤 รายละเอียดผู้ใช้ระบบ',
+            html: '<div style="text-align: left; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: 14px; line-height: 1.8;">' +
+                  '<div><strong>ชื่อ/นามแฝง:</strong> ' + escapeMemberHtml(name) + '</div>' +
+                  '<div><strong>ID (Login):</strong> <code>' + escapeMemberHtml(id) + '</code></div>' +
+                  '<div><strong>PASS:</strong> <code>' + escapeMemberHtml(pass) + '</code></div>' +
+                  '<div><strong>สิทธิ์ (Class):</strong> ' + escapeMemberHtml(user.class || '-') + '</div>' +
+                  '<div><strong>เชื่อมโยง:</strong> ' + escapeMemberHtml(user.linkedInfo || '-') + '</div>' +
+                  '<div><strong>สถานะ:</strong> ' + escapeMemberHtml(user.status || '-') + '</div>' +
+                  '</div>',
+            showCancelButton: true,
+            confirmButtonText: '<i class="bi bi-clipboard me-1"></i> คัดลอก 3 บรรทัด',
+            cancelButtonText: 'ปิด',
+            confirmButtonColor: '#0d6efd'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                doCopyMemberLoginText(name, id, pass);
+            }
+        });
+    } else {
+        doCopyMemberLoginText(name, id, pass);
+    }
 }
 
 function resetPassword(index) {

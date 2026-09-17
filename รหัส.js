@@ -1285,16 +1285,18 @@ function getTimeoutMinutes(userClass) {
     switch (userClass) {
         case 'admin':
             return 480;
+        case 'super_user':
         case 'super_user1':
         case 'super_user2':
         case 'super_user3':
             return 120;
+        case 'user':
         case 'user1':
         case 'user2':
         case 'user3':
             return 60;
         default:
-            return 30;
+            return 60;
     }
 }
 
@@ -3118,17 +3120,35 @@ function getBrokersData(ss) {
   const userData = userSheet ? userSheet.getDataRange().getValues() : [];
   
   const userMap = {};
+  const nameMap = {};
+  const emailMap = {};
   if (userData.length > 1) {
     for (let i = 1; i < userData.length; i++) {
-      const username = userData[i][1];
-      const linkedBroker = userData[i][3];
+      const email = userData[i][0] !== undefined ? String(userData[i][0]).trim() : '';
+      const username = userData[i][1] !== undefined ? String(userData[i][1]).trim() : '';
+      const uClass = userData[i][2];
+      const linkedBroker = userData[i][3] !== undefined ? String(userData[i][3]).trim() : '';
+      const status = userData[i][5];
+      const password = userData[i][6] !== undefined ? String(userData[i][6]).trim() : '';
+      
+      const uObj = {
+        email: email,
+        username: username,
+        class: uClass,
+        status: status,
+        password: password
+      };
+      
       if (linkedBroker) {
-        userMap[linkedBroker] = {
-          email: userData[i][0],
-          class: userData[i][2],
-          status: userData[i][5],
-          password: userData[i][6]
-        };
+        userMap[linkedBroker] = uObj;
+        userMap[linkedBroker.toLowerCase()] = uObj;
+      }
+      if (username) {
+        nameMap[username] = uObj;
+        nameMap[username.toLowerCase()] = uObj;
+      }
+      if (email) {
+        emailMap[email.toLowerCase()] = uObj;
       }
     }
   }
@@ -3136,19 +3156,27 @@ function getBrokersData(ss) {
   const brokers = [];
   if (data.length > 1) {
     for (let i = 1; i < data.length; i++) {
-      const brokerName = data[i][0];
-      const hasLogin = userMap[brokerName] ? true : false;
+      const brokerName = data[i][0] !== undefined ? String(data[i][0]).trim() : '';
+      const brokerEmail = data[i][2] !== undefined ? String(data[i][2]).trim() : '';
+      
+      const loginInfo = userMap[brokerName] || 
+                        userMap[brokerName.toLowerCase()] || 
+                        nameMap[brokerName] || 
+                        nameMap[brokerName.toLowerCase()] || 
+                        (brokerEmail ? emailMap[brokerEmail.toLowerCase()] : null) || 
+                        null;
+      const hasLogin = !!loginInfo;
       
       brokers.push({
         index: i - 1,
         name: brokerName,
         phone: data[i][1] || '',
-        email: data[i][2] || '',
+        email: brokerEmail,
         address: data[i][3] || '',
         notes: data[i][4] || '',
         status: data[i][5] || 'ใช้งาน',
         hasLogin: hasLogin,
-        loginInfo: userMap[brokerName] || null
+        loginInfo: loginInfo
       });
     }
   }
@@ -3171,17 +3199,35 @@ function getInvestorsData(ss) {
   const userData = userSheet ? userSheet.getDataRange().getValues() : [];
   
   const userMap = {};
+  const nameMap = {};
+  const emailMap = {};
   if (userData.length > 1) {
     for (let i = 1; i < userData.length; i++) {
-      const username = userData[i][1];
-      const linkedInvestor = userData[i][4];
+      const email = userData[i][0] !== undefined ? String(userData[i][0]).trim() : '';
+      const username = userData[i][1] !== undefined ? String(userData[i][1]).trim() : '';
+      const uClass = userData[i][2];
+      const linkedInvestor = userData[i][4] !== undefined ? String(userData[i][4]).trim() : '';
+      const status = userData[i][5];
+      const password = userData[i][6] !== undefined ? String(userData[i][6]).trim() : '';
+      
+      const uObj = {
+        email: email,
+        username: username,
+        class: uClass,
+        status: status,
+        password: password
+      };
+      
       if (linkedInvestor) {
-        userMap[linkedInvestor] = {
-          email: userData[i][0],
-          class: userData[i][2],
-          status: userData[i][5],
-          password: userData[i][6]
-        };
+        userMap[linkedInvestor] = uObj;
+        userMap[linkedInvestor.toLowerCase()] = uObj;
+      }
+      if (username) {
+        nameMap[username] = uObj;
+        nameMap[username.toLowerCase()] = uObj;
+      }
+      if (email) {
+        emailMap[email.toLowerCase()] = uObj;
       }
     }
   }
@@ -3189,19 +3235,27 @@ function getInvestorsData(ss) {
   const investors = [];
   if (data.length > 1) {
     for (let i = 1; i < data.length; i++) {
-      const investorName = data[i][0];
-      const hasLogin = userMap[investorName] ? true : false;
+      const investorName = data[i][0] !== undefined ? String(data[i][0]).trim() : '';
+      const investorEmail = data[i][2] !== undefined ? String(data[i][2]).trim() : '';
+      
+      const loginInfo = userMap[investorName] || 
+                        userMap[investorName.toLowerCase()] || 
+                        nameMap[investorName] || 
+                        nameMap[investorName.toLowerCase()] || 
+                        (investorEmail ? emailMap[investorEmail.toLowerCase()] : null) || 
+                        null;
+      const hasLogin = !!loginInfo;
       
       investors.push({
         index: i - 1,
         name: investorName,
         phone: data[i][1] || '',
-        email: data[i][2] || '',
+        email: investorEmail,
         address: data[i][3] || '',
         notes: data[i][4] || '',
         status: data[i][5] || 'ใช้งาน',
         hasLogin: hasLogin,
-        loginInfo: userMap[investorName] || null
+        loginInfo: loginInfo
       });
     }
   }
@@ -3228,14 +3282,14 @@ function getUsersData(ss) {
       
       users.push({
         index: i - 1,
-        email: data[i][0],
-        username: data[i][1],
-        class: data[i][2],
+        email: data[i][0] !== undefined ? String(data[i][0]).trim() : '',
+        username: data[i][1] !== undefined ? String(data[i][1]).trim() : '',
+        class: data[i][2] !== undefined ? String(data[i][2]).trim() : '',
         linkedBroker: data[i][3] || '',
         linkedInvestor: data[i][4] || '',
         linkedInfo: linkedInfo,
         status: data[i][5] || 'active',
-        password: data[i][6] || ''
+        password: data[i][6] !== undefined ? String(data[i][6]).trim() : ''
       });
     }
   }
