@@ -52,6 +52,33 @@ function sendTelegram(htmlText) {
   }
 }
 
+// ✅ เวอร์ชันเบา — ไม่รอ response (ใช้ใน login flow เพื่อไม่ block ผู้ใช้)
+function sendTelegramAsync_(htmlText) {
+  try {
+    var cfg = getTelegramConfig();
+    if (!cfg.token || !cfg.chatId) return;
+
+    var url = 'https://api.telegram.org/bot' + cfg.token + '/sendMessage';
+    var payload = {
+      chat_id: cfg.chatId,
+      text: htmlText,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    };
+
+    // UrlFetchApp ใน GAS เป็น synchronous เสมอ แต่ muteHttpExceptions + try-catch
+    // ช่วยให้ไม่ throw error กลับไป block ฟังก์ชันหลัก
+    UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    // เงียบๆ — ไม่ให้กระทบ login flow
+  }
+}
+
 function getThaiDateTimeStr() {
   return new Date().toLocaleString('th-TH', {
     timeZone: 'Asia/Bangkok',
@@ -1209,39 +1236,34 @@ function authenticateUser(username, password) {
                     userAgent: Session.getTemporaryActiveUserKey() || 'unknown'
                 };
                 
+                // ✅ เขียน session เท่านั้น (จำเป็นสำหรับ loadInitialAppData ถัดไป)
                 PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(sessionData));
                 PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(sessionData));
                 
-                cleanupOldSessions(userData[i][0]);
-                logUserActivity(userData[i][0], userData[i][1], userData[i][2], 'LOGIN', 'เข้าสู่ระบบสำเร็จ');
-                
-                sendTelegram(
-                    '🔑 <b>[APHITHANASAP - เข้าสู่ระบบสำเร็จ]</b>\n' +
-                    '👤 <b>ผู้ใช้งาน:</b> ' + (userData[i][1] || userData[i][0]) + ' (' + userData[i][0] + ')\n' +
-                    '🛡 <b>สิทธิ์:</b> ' + userData[i][2] + '\n' +
-                    '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr() + '\n' +
-                    '✅ <b>สถานะ:</b> เข้าสู่ระบบเรียบร้อย'
-                );
-                
+                // ✅ ส่ง response กลับทันที — Telegram/Log/Cleanup จะทำใน getInitialAppData
                 return JSON.stringify({
                     status: 'success',
                     message: 'เข้าสู่ระบบสำเร็จ',
                     userClass: userData[i][2],
                     username: userData[i][1],
                     sessionKey: sessionKey,
-                    timeout: getTimeoutMinutes(userData[i][2])
+                    timeout: getTimeoutMinutes(userData[i][2]),
+                    _loginEmail: userData[i][0],
+                    _loginDisplayName: userData[i][1] || userData[i][0]
                 });
             }
         }
 
-        logUserActivity(username, 'Unknown', 'guest', 'LOGIN_FAILED', 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-
-        sendTelegram(
-            '🚨 <b>[APHITHANASAP - แจ้งเตือนความปลอดภัย!]</b>\n' +
-            '⚠️ <b>สถานะ:</b> มีคนพยายามเข้าสู่ระบบแต่รหัสผ่านไม่ถูกต้อง\n' +
-            '👤 <b>Username ที่ระบุ:</b> ' + username + '\n' +
-            '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr()
-        );
+        // ❌ Login failed — ยัง log + แจ้งเตือนปกติ (ไม่ต้องรีบเพราะไม่มี loadInitialAppData ต่อ)
+        try { logUserActivity(username, 'Unknown', 'guest', 'LOGIN_FAILED', 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'); } catch(e) {}
+        try {
+            sendTelegram(
+                '🚨 <b>[APHITHANASAP - แจ้งเตือนความปลอดภัย!]</b>\n' +
+                '⚠️ <b>สถานะ:</b> มีคนพยายามเข้าสู่ระบบแต่รหัสผ่านไม่ถูกต้อง\n' +
+                '👤 <b>Username ที่ระบุ:</b> ' + username + '\n' +
+                '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr()
+            );
+        } catch(e) {}
 
         return JSON.stringify({
             status: 'error',
@@ -2295,6 +2317,30 @@ function getInitialAppData(sessionKey) {
         }
       }
     }
+
+    // ✅ งานหลังบ้าน: Telegram/Log/Cleanup ที่ย้ายมาจาก authenticateUser
+    // ทำตรงนี้เพราะ login response ส่งกลับถึง client ไปแล้ว — ไม่ block หน้าจอ
+    try {
+      var sessionProp = PropertiesService.getScriptProperties().getProperty(sessionKey);
+      if (sessionProp) {
+        var sess = JSON.parse(sessionProp);
+        // Telegram + Log เฉพาะครั้งแรกหลัง login (ตรวจจาก loginTime ไม่เกิน 30 วินาที)
+        var sessionAge = Date.now() - (sess.loginTime || 0);
+        if (sessionAge < 30000) {
+          try { cleanupOldSessions(sess.email); } catch(e) {}
+          try { logUserActivity(sess.email, sess.username, sess.class, 'LOGIN', 'เข้าสู่ระบบสำเร็จ'); } catch(e) {}
+          try {
+            sendTelegram(
+              '🔑 <b>[APHITHANASAP - เข้าสู่ระบบสำเร็จ]</b>\n' +
+              '👤 <b>ผู้ใช้งาน:</b> ' + (sess.username || sess.email) + ' (' + sess.email + ')\n' +
+              '🛡 <b>สิทธิ์:</b> ' + sess.class + '\n' +
+              '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr() + '\n' +
+              '✅ <b>สถานะ:</b> เข้าสู่ระบบเรียบร้อย'
+            );
+          } catch(e) {}
+        }
+      }
+    } catch(e) {}
 
     return JSON.stringify({
       status: 'success',

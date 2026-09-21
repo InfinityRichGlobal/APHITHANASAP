@@ -5544,8 +5544,16 @@ function loadInitialAppData(sessionKey, userInfo) {
     if (!sessionKey) return;
     showProgress('กำลังโหลดข้อมูลระบบ...', 'กำลังเชื่อมต่อกับฐานข้อมูล', 15);
 
+    // ✅ Safety timeout 20 วินาที — ถ้าค้างนานเกินให้แสดงปุ่มลองใหม่
+    var loadTimeout = setTimeout(function() {
+        console.warn('⏰ loadInitialAppData timeout after 20s');
+        hideProgress();
+        showError('โหลดข้อมูลนานเกินไป (20 วินาที) <button class="btn btn-sm btn-outline-warning ms-2" onclick="loadInitialAppData(localStorage.getItem(\'userSessionKey\'))">🔄 ลองใหม่</button>');
+    }, 20000);
+
     google.script.run
         .withSuccessHandler(function(result) {
+            clearTimeout(loadTimeout);
             hideProgress();
             try {
                 const res = (typeof result === 'string') ? JSON.parse(result) : result;
@@ -5587,6 +5595,7 @@ function loadInitialAppData(sessionKey, userInfo) {
             }
         })
         .withFailureHandler(function(error) {
+            clearTimeout(loadTimeout);
             hideProgress();
             console.error('loadInitialAppData failed:', error);
             showError('การเชื่อมต่อขัดข้อง: ' + error.message + ' <button class="btn btn-sm btn-outline-danger ms-2" onclick="loadInitialAppData(localStorage.getItem(\'userSessionKey\'))">ลองใหม่</button>');
