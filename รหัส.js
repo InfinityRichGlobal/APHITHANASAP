@@ -5033,19 +5033,20 @@ function parseMonthsFromAgeText(txt) {
 // FLEX: เมนูหลัก
 // ============================================================
 // ============================================================
-// FLEX: เมนูหลัก (Admin Dashboard — Modern Executive App Grid)
+// FLEX: เมนูหลัก (Admin Dashboard)
 // ============================================================
 function adminMenuFlex() {
-  function gridButton(label, keyword, color) {
-    return {
-      type: 'button',
-      style: 'primary',
-      color: color,
-      height: 'sm',
-      flex: 1,
-      action: { type: 'message', label: label, text: keyword }
-    };
-  }
+  var rows = [
+    menuButton('📊 ภาพรวมพอร์ต', '#overview', '#004D40'),
+    menuButton('📋 เช็คสถานะ', '#status', '#2E7D32'),
+    menuButton('🏘 เช็ครายแปลง', '#plots', '#00838F'),
+    menuButton('👤 ดูรายนายทุน', '#investor', '#1565C0'),
+    menuButton('⏰ ครบกำหนดเดือนนี้', '#due', '#EF6C00'),
+    menuButton('📆 ครบกำหนด (เลือกเดือน)', '#expire', '#D84315'),
+    menuButton('🔔 แจ้งเตือนรายสัปดาห์', '#weekly', '#1A237E'),
+    menuButton('📊 แจ้งเตือนรายเดือน', '#monthly', '#004D40'),
+    menuButton('📖 คู่มือคีย์เวิร์ด', '#manual', '#616161')
+  ];
 
   var card = {
     type: 'bubble', size: 'mega',
@@ -5057,7 +5058,6 @@ function adminMenuFlex() {
     body: {
       type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none',
       contents: [
-        // หัวข้อ Dashboard แบบ Executive
         {
           type: 'box', layout: 'vertical', alignItems: 'center',
           contents: [
@@ -5071,67 +5071,9 @@ function adminMenuFlex() {
             { type: 'text', text: 'แผงควบคุมระบบจัดการทรัพย์สิน', size: 'xs', color: '#757575', align: 'center', margin: 'xs' }
           ]
         },
-
-        // ส่วนที่ 1: ข้อมูลและพอร์ตลงทุน
-        {
-          type: 'box', layout: 'vertical', margin: 'md',
-          contents: [
-            txt('📁 ข้อมูลและบริหารพอร์ต', 'xs', '#004D40', 'bold'),
-            { type: 'separator', margin: 'xs', color: '#A7F3D0' }
-          ]
-        },
-        {
-          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
-          contents: [
-            gridButton('📊 ภาพรวมพอร์ต', '#overview', '#004D40'),
-            gridButton('📋 เช็คสถานะ', '#status', '#2E7D32')
-          ]
-        },
-        {
-          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
-          contents: [
-            gridButton('🏘 เช็ครายแปลง', '#plots', '#00838F'),
-            gridButton('👤 ดูรายนายทุน', '#investor', '#1565C0')
-          ]
-        },
-
-        // ส่วนที่ 2: สัญญาและการแจ้งเตือน
+        { type: 'box', layout: 'vertical', margin: 'md', spacing: 'none', contents: rows },
         {
           type: 'box', layout: 'vertical', margin: 'lg',
-          contents: [
-            txt('⏰ สัญญา & การแจ้งเตือน', 'xs', '#D84315', 'bold'),
-            { type: 'separator', margin: 'xs', color: '#FED7AA' }
-          ]
-        },
-        {
-          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
-          contents: [
-            gridButton('⏰ ครบเดือนนี้', '#due', '#EF6C00'),
-            gridButton('📆 เลือกเดือน', '#expire', '#D84315')
-          ]
-        },
-        {
-          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
-          contents: [
-            gridButton('🔔 เตือนสัปดาห์', '#weekly', '#1A237E'),
-            gridButton('📊 เตือนรายเดือน', '#monthly', '#004D40')
-          ]
-        },
-
-        // ส่วนที่ 3: คู่มือคีย์เวิร์ด (Full Width)
-        {
-          type: 'box', layout: 'vertical', margin: 'lg',
-          contents: [
-            {
-              type: 'button', style: 'primary', color: '#4B5563', height: 'sm',
-              action: { type: 'message', label: '📖 คู่มือคีย์เวิร์ดคำสั่งทั้งหมด', text: '#manual' }
-            }
-          ]
-        },
-
-        // กล่อง Hint คำสั่งพิมพ์ตรง
-        {
-          type: 'box', layout: 'vertical', margin: 'md',
           backgroundColor: '#F8FAFC', cornerRadius: 'md', paddingAll: 'sm',
           borderWidth: '1px', borderColor: '#E2E8F0', spacing: 'xs',
           contents: [
