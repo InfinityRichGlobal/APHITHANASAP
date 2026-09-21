@@ -4723,9 +4723,16 @@ switch (text) {
     case '#expire':   reply(replyToken, [expireMonthSelectorFlex()]); break;  // ← เพิ่มใหม่
     case '#overview': reply(replyToken, [overviewFlex()]); break;
     case '#weekly':
-    case '#alert':    reply(replyToken, [getWeeklyAlertFlex()]); break;
+    case '#alert':
+    case 'แจ้งเตือนรายสัปดาห์':
+    case 'แจ้งเตือนสัปดาห์':
+      reply(replyToken, [getWeeklyAlertFlex()]); break;
     case '#monthly':
-    case '#month':    reply(replyToken, [getMonthlyFlex()]); break;
+    case '#month':
+    case 'แจ้งเตือนรายเดือน':
+    case 'สรุปพอร์ตรายเดือน':
+    case 'สรุปรายเดือน':
+      reply(replyToken, [getMonthlyFlex()]); break;
       default:
         // ค้นหาแปลงด้วยชื่อ (พิมพ์ชื่อแปลงตรงๆ)
         if (text.charAt(0) !== '#') {
@@ -5032,7 +5039,9 @@ var rows = [
     menuButton('🏘 เช็ครายแปลง', '#plots', '#00838F'),
     menuButton('👤 ดูรายนายทุน', '#investor', '#1565C0'),
     menuButton('⏰ ครบกำหนดเดือนนี้', '#due', '#EF6C00'),
-    menuButton('📆 ครบกำหนด (เลือกเดือน)', '#expire', '#D84315'),   // ← เพิ่มใหม่
+    menuButton('📆 ครบกำหนด (เลือกเดือน)', '#expire', '#D84315'),
+    menuButton('🔔 แจ้งเตือนรายสัปดาห์', '#weekly', '#1A237E'),
+    menuButton('📊 แจ้งเตือนรายเดือน', '#monthly', '#004D40'),
     menuButton('📖 คู่มือคีย์เวิร์ด', '#manual', '#757575')
 ];
   // ★ เพิ่ม: hint คำสั่ง #id และ #พิมพ์ชื่อแปลง (เดิมหายไปจากเมนูแอดมิน)
@@ -5748,7 +5757,8 @@ var cmds = [
     ['#investor', 'ดูสรุปรายนายทุน', '#1565C0'],
     ['#due', 'ครบกำหนดเดือนนี้', '#EF6C00'],
     ['#expire', 'ครบกำหนด เลือกเดือนล่วงหน้า', '#D84315'],
-    ['#weekly', 'แจ้งเตือนสถานะสัญญาประจำสัปดาห์', '#4A148C']
+    ['#weekly', 'แจ้งเตือนสถานะสัญญาประจำสัปดาห์', '#1A237E'],
+    ['#monthly', 'สรุปพอร์ตการลงทุนประจำเดือน', '#004D40']
 ];
   var rows = [txt('กดปุ่มด้านล่างเพื่อใช้งานได้เลย', 'xs', '#9E9E9E')];
   cmds.forEach(function(c) {
