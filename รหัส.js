@@ -1179,7 +1179,8 @@ function handleWebApp(e) {
       simulateUserSession: simulateUserSession,
       restoreAdminSession: restoreAdminSession,
       getDictionary: getDictionary,
-      notifyUserLogin: notifyUserLogin
+      notifyUserLogin: notifyUserLogin,
+      triggerWeeklyAlertNow: triggerWeeklyAlertNow
     };
 
     if (!ALLOWED[fn]) {
@@ -6016,7 +6017,7 @@ function buildAlertFlex(nearDue, overdue, grace) {
     content.push(sectionHeader('⚠️ อยู่ระหว่างผ่อนผัน (' + grace.length + ' แปลง)', '#B45309'));
     var showGrace = grace.slice(0, 6);
     showGrace.forEach(function(g) {
-      var tag = g.days ? 'ผ่อนผัน (เกิน ' + g.days + ' วัน)' : 'ควรตัดสินใจ';
+      var tag = g.days ? ('ควรตัดสินใจ (เกินมา ' + g.days + ' วัน)') : 'ควรตัดสินใจ';
       content.push(alertItemBox(g.a, tag, '#B45309'));
     });
     if (grace.length > 6) {
@@ -6065,16 +6066,18 @@ function alertItemBox(a, tagText, tagColor) {
       {
         type: 'box',
         layout: 'horizontal',
+        alignItems: 'center',
         contents: [
-          txt(a.name, 'sm', '#111827', 'bold', 7),
+          txt(a.name, 'sm', '#111827', 'bold', 5),
           {
             type: 'box',
             layout: 'vertical',
+            flex: 6,
             backgroundColor: tagColor + '18',
             cornerRadius: 'sm',
             paddingStart: 'sm', paddingEnd: 'sm', paddingTop: 'xs', paddingBottom: 'xs',
             contents: [
-              txt(tagText, 'xxs', tagColor, 'bold', null, 'center')
+              txt(tagText, 'xxs', tagColor, 'bold', null, 'end')
             ]
           }
         ]
@@ -6100,6 +6103,15 @@ function alertItemBox(a, tagText, tagColor) {
       }
     ]
   };
+}
+
+function triggerWeeklyAlertNow() {
+  try {
+    weeklyContractAlert();
+    return JSON.stringify({ status: 'success', message: 'ยิงแจ้งเตือนรายสัปดาห์เข้า LINE และ Telegram เรียบร้อย' });
+  } catch(e) {
+    return JSON.stringify({ status: 'error', message: e.toString() });
+  }
 }
 
 function monthlySummary() {
@@ -6190,9 +6202,9 @@ function sendWeeklyTelegramAlert(nearDue, overdue, grace) {
       grace.forEach(function(g, idx) {
         var invStr = g.a.investor ? (' (นายทุน: ' + g.a.investor + ')') : '';
         var dateStr = 'สัญญา: ' + fmtDate(g.a.start) + ' ถึง ' + fmtDate(g.a.end);
-        var extraStr = g.days ? (' | ⚠️ เกินสัญญา ' + g.days + ' วัน') : '';
+        var extraStr = g.days ? (' | ⚠️ ควรตัดสินใจ (เกินมา ' + g.days + ' วัน)') : ' | ⚠️ ควรตัดสินใจ';
         msg += (idx + 1) + '. <b>' + g.a.name + '</b>' + invStr + '\n' +
-               '   └ ' + dateStr + extraStr + ' | ทุนรับซื้อ: ' + baht(g.a.principal) + ' บ.\n';
+               '   └ ' + dateStr + extraStr + ' (เงินต้น: ' + baht(g.a.principal) + ' บ.)\n';
       });
       msg += '\n';
     }
