@@ -4720,6 +4720,8 @@ switch (text) {
     case '#due':      reply(replyToken, dueThisMonthFlex()); break;   // ← เดิม ไม่แตะ
     case '#expire':   reply(replyToken, [expireMonthSelectorFlex()]); break;  // ← เพิ่มใหม่
     case '#overview': reply(replyToken, [overviewFlex()]); break;
+    case '#weekly':
+    case '#alert':    reply(replyToken, [getWeeklyAlertFlex()]); break;
       default:
         // ค้นหาแปลงด้วยชื่อ (พิมพ์ชื่อแปลงตรงๆ)
         if (text.charAt(0) !== '#') {
@@ -5741,7 +5743,8 @@ var cmds = [
     ['#plots', 'เช็ครายแปลงทั้งหมด', '#00838F'],
     ['#investor', 'ดูสรุปรายนายทุน', '#1565C0'],
     ['#due', 'ครบกำหนดเดือนนี้', '#EF6C00'],
-    ['#expire', 'ครบกำหนด เลือกเดือนล่วงหน้า', '#D84315']   // ← เพิ่มใหม่
+    ['#expire', 'ครบกำหนด เลือกเดือนล่วงหน้า', '#D84315'],
+    ['#weekly', 'แจ้งเตือนสถานะสัญญาประจำสัปดาห์', '#4A148C']
 ];
   var rows = [txt('กดปุ่มด้านล่างเพื่อใช้งานได้เลย', 'xs', '#9E9E9E')];
   cmds.forEach(function(c) {
@@ -5885,52 +5888,217 @@ function weeklyContractAlert() {
   var nearDue = [], overdue = [], grace = [];
 
   assets.forEach(function(a) {
+    var left = a.end ? daysLeft(a.end) : null;
     if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
-      if (!a.end) return;
-      var left = daysLeft(a.end);
-      if (left < 0) overdue.push({ a: a, days: Math.abs(left) });
-      else if (LINE.alertDaysArr.indexOf(left) > -1) nearDue.push({ a: a, days: left });
+      if (left === null) return;
+      if (left < 0) {
+        overdue.push({ a: a, days: Math.abs(left) });
+      } else if (left <= 60) {
+        // ✅ ตรวจแบบช่วงเวลา ภายใน 60 วันข้างหน้า (ไม่หลุดรอดแม้รันสัปดาห์ละครั้ง)
+        nearDue.push({ a: a, days: left });
+      }
     } else if (a.status === 'อยู่ระหว่างผ่อนผัน') {
-      grace.push({ a: a });
+      grace.push({ a: a, days: (left !== null && left < 0) ? Math.abs(left) : null });
     }
   });
 
+  // เรียงลำดับ: แปลงที่ใกล้หมดสัญญาที่สุด / เกินกำหนดนานสุด ขึ้นก่อน
+  overdue.sort(function(x, y) { return y.days - x.days; });
+  nearDue.sort(function(x, y) { return x.days - y.days; });
+  grace.sort(function(x, y) { return (y.days || 0) - (x.days || 0); });
+
   if (nearDue.length || overdue.length || grace.length) {
     var bubble = buildAlertFlex(nearDue, overdue, grace);
-    pushFlex('แจ้งเตือนสัญญาประจำสัปดาห์', bubble);
+    pushFlex('📋 แจ้งเตือนสถานะสัญญาประจำสัปดาห์', bubble);
   }
 
   // ส่งแจ้งเตือนเข้า Telegram ทุกวันจันทร์
   sendWeeklyTelegramAlert(nearDue, overdue, grace);
 }
 
-function buildAlertFlex(nearDue, overdue, grace) {
-  var content = [txt(new Date().toLocaleDateString('th-TH', {weekday:'long', day:'numeric', month:'long', year:'numeric'}), 'xs', '#9E9E9E')];
+function getWeeklyAlertFlex() {
+  var assets = readAssets();
+  var nearDue = [], overdue = [], grace = [];
 
+  assets.forEach(function(a) {
+    var left = a.end ? daysLeft(a.end) : null;
+    if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
+      if (left === null) return;
+      if (left < 0) {
+        overdue.push({ a: a, days: Math.abs(left) });
+      } else if (left <= 60) {
+        nearDue.push({ a: a, days: left });
+      }
+    } else if (a.status === 'อยู่ระหว่างผ่อนผัน') {
+      grace.push({ a: a, days: (left !== null && left < 0) ? Math.abs(left) : null });
+    }
+  });
+
+  overdue.sort(function(x, y) { return y.days - x.days; });
+  nearDue.sort(function(x, y) { return x.days - y.days; });
+  grace.sort(function(x, y) { return (y.days || 0) - (x.days || 0); });
+
+  return {
+    type: 'flex',
+    altText: '📋 แจ้งเตือนสถานะสัญญาประจำสัปดาห์',
+    contents: buildAlertFlex(nearDue, overdue, grace)
+  };
+}
+
+function buildAlertFlex(nearDue, overdue, grace) {
+  var todayStr = new Date().toLocaleDateString('th-TH', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+
+  var content = [
+    txt(todayStr, 'xs', '#9E9E9E')
+  ];
+
+  // กล่องสรุปตัวเลขภาพรวม (Summary Counts)
+  content.push({
+    type: 'box',
+    layout: 'horizontal',
+    margin: 'md',
+    backgroundColor: '#F3F4F6',
+    cornerRadius: 'md',
+    paddingAll: 'sm',
+    contents: [
+      {
+        type: 'box', layout: 'vertical', flex: 1, contents: [
+          txt('เกินกำหนด', 'xxs', '#DC2626', null, null, 'center'),
+          txt(overdue.length + ' แปลง', 'sm', '#DC2626', 'bold', null, 'center')
+        ]
+      },
+      { type: 'separator', color: '#E5E7EB' },
+      {
+        type: 'box', layout: 'vertical', flex: 1, contents: [
+          txt('ใกล้ครบ (60ว.)', 'xxs', '#D97706', null, null, 'center'),
+          txt(nearDue.length + ' แปลง', 'sm', '#D97706', 'bold', null, 'center')
+        ]
+      },
+      { type: 'separator', color: '#E5E7EB' },
+      {
+        type: 'box', layout: 'vertical', flex: 1, contents: [
+          txt('ผ่อนผัน', 'xxs', '#B45309', null, null, 'center'),
+          txt(grace.length + ' แปลง', 'sm', '#B45309', 'bold', null, 'center')
+        ]
+      }
+    ]
+  });
+
+  // 1. หมวดเกินกำหนดแล้ว (Overdue)
   if (overdue.length) {
-    content.push(sectionHeader('🔴 เกินกำหนดแล้ว (' + overdue.length + ')', '#C62828'));
-    overdue.forEach(function(o) { content.push(miniRow(o.a.name, 'เกินมา ' + o.days + ' วัน', '#C62828')); });
+    content.push(sectionHeader('🔴 สัญญาเกินกำหนด (' + overdue.length + ' แปลง)', '#DC2626'));
+    var showOverdue = overdue.slice(0, 6);
+    showOverdue.forEach(function(o) {
+      content.push(alertItemBox(o.a, 'เกินมา ' + o.days + ' วัน', '#DC2626'));
+    });
+    if (overdue.length > 6) {
+      content.push(txt('...และอีก ' + (overdue.length - 6) + ' แปลงที่เกินกำหนด (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
+    }
   }
+
+  // 2. หมวดใกล้ครบสัญญา (Near Due ภายใน 60 วัน)
   if (nearDue.length) {
-    content.push(sectionHeader('⏰ ใกล้ครบสัญญา (' + nearDue.length + ')', '#EF6C00'));
-    nearDue.forEach(function(o) { content.push(miniRow(o.a.name, 'เหลือ ' + o.days + ' วัน', '#EF6C00')); });
+    content.push(sectionHeader('⏰ ใกล้ครบสัญญา (ใน 60 วัน) (' + nearDue.length + ' แปลง)', '#D97706'));
+    var showNearDue = nearDue.slice(0, 6);
+    showNearDue.forEach(function(n) {
+      var badgeColor = n.days <= 7 ? '#DC2626' : (n.days <= 30 ? '#D97706' : '#2563EB');
+      content.push(alertItemBox(n.a, 'เหลืออีก ' + n.days + ' วัน', badgeColor));
+    });
+    if (nearDue.length > 6) {
+      content.push(txt('...และอีก ' + (nearDue.length - 6) + ' แปลงที่ใกล้ครบ (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
+    }
   }
+
+  // 3. หมวดอยู่ระหว่างผ่อนผัน (Grace Period)
   if (grace.length) {
-    content.push(sectionHeader('⚠️ อยู่ระหว่างผ่อนผัน (' + grace.length + ')', '#F9A825'));
-    grace.forEach(function(g) { content.push(miniRow(g.a.name, 'ควรตัดสินใจ', '#F9A825')); });
+    content.push(sectionHeader('⚠️ อยู่ระหว่างผ่อนผัน (' + grace.length + ' แปลง)', '#B45309'));
+    var showGrace = grace.slice(0, 6);
+    showGrace.forEach(function(g) {
+      var tag = g.days ? 'ผ่อนผัน (เกิน ' + g.days + ' วัน)' : 'ควรตัดสินใจ';
+      content.push(alertItemBox(g.a, tag, '#B45309'));
+    });
+    if (grace.length > 6) {
+      content.push(txt('...และอีก ' + (grace.length - 6) + ' แปลงที่ผ่อนผัน (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
+    }
+  }
+
+  if (!overdue.length && !nearDue.length && !grace.length) {
+    content.push(txt('✅ สัปดาห์นี้ไม่มีสัญญาที่เกินกำหนดหรือใกล้ครบกำหนดครับ', 'sm', '#16A34A', 'bold', null, 'center'));
   }
 
   return {
-    type:'bubble', size:'mega',
-    body:{ type:'box', layout:'vertical', paddingAll:'lg', spacing:'none', contents:[
-      txt('📋 แจ้งเตือนสัญญา', 'lg', '#1A1A1A', 'bold'),
-      { type:'box', layout:'vertical', height:'3px', backgroundColor:'#1A237E', margin:'md', cornerRadius:'sm', contents:[] },
-      { type:'box', layout:'vertical', margin:'md', spacing:'sm', contents: content }
-    ]},
-    footer:{ type:'box', layout:'vertical', paddingAll:'md', contents:[{
-      type:'button', style:'primary', color:'#1A237E', height:'sm',
-      action:{ type:'uri', label:'เปิดระบบดูรายละเอียด', uri: LINE.webUrl }
-    }]}
+    type: 'bubble', size: 'mega',
+    body: {
+      type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none',
+      contents: [
+        txt('📋 แจ้งเตือนสถานะสัญญา', 'lg', '#1A1A1A', 'bold'),
+        { type: 'box', layout: 'vertical', height: '3px', backgroundColor: '#1A237E', margin: 'md', cornerRadius: 'sm', contents: [] },
+        { type: 'box', layout: 'vertical', margin: 'md', spacing: 'sm', contents: content }
+      ]
+    },
+    footer: {
+      type: 'box', layout: 'vertical', paddingAll: 'md',
+      contents: [{
+        type: 'button', style: 'primary', color: '#1A237E', height: 'sm',
+        action: { type: 'uri', label: 'เปิดระบบดูรายละเอียดทั้งหมด', uri: LINE.webUrl }
+      }]
+    }
+  };
+}
+
+function alertItemBox(a, tagText, tagColor) {
+  var invName = a.investor || '(ไม่ระบุ)';
+  var dateStr = a.end ? fmtDate(a.end) : '-';
+  var moneyStr = a.principal ? baht(a.principal) + ' ฿' : '-';
+
+  return {
+    type: 'box',
+    layout: 'vertical',
+    margin: 'sm',
+    backgroundColor: '#F9FAFB',
+    cornerRadius: 'md',
+    paddingAll: 'md',
+    contents: [
+      // แถวที่ 1: ชื่อแปลง (ซ้าย) + Badge สถานะ/วัน (ขวา)
+      {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          txt(a.name, 'sm', '#111827', 'bold', 7),
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: tagColor + '18',
+            cornerRadius: 'sm',
+            paddingStart: 'sm', paddingEnd: 'sm', paddingTop: 'xs', paddingBottom: 'xs',
+            contents: [
+              txt(tagText, 'xxs', tagColor, 'bold', null, 'center')
+            ]
+          }
+        ]
+      },
+      // แถวที่ 2: นายทุน (ซ้าย) + ยอดเงินต้น (ขวา)
+      {
+        type: 'box',
+        layout: 'horizontal',
+        margin: 'xs',
+        contents: [
+          txt('👤 นายทุน: ' + invName, 'xs', '#4B5563', null, 6),
+          txt('💰 ' + moneyStr, 'xs', '#111827', 'bold', 4, 'end')
+        ]
+      },
+      // แถวที่ 3: วันสิ้นสุดสัญญา
+      {
+        type: 'box',
+        layout: 'horizontal',
+        margin: 'none',
+        contents: [
+          txt('📅 สิ้นสุด: ' + dateStr, 'xxs', '#9CA3AF', null, 1)
+        ]
+      }
+    ]
   };
 }
 
@@ -6007,7 +6175,7 @@ function sendWeeklyTelegramAlert(nearDue, overdue, grace) {
     }
     
     if (nearDue && nearDue.length > 0) {
-      msg += '⏰ <b>สัญญาใกล้ครบกำหนด (' + nearDue.length + ' แปลง):</b>\n';
+      msg += '⏰ <b>สัญญาใกล้ครบกำหนดใน 60 วัน (' + nearDue.length + ' แปลง):</b>\n';
       nearDue.forEach(function(n, idx) {
         var invStr = n.a.investor ? (' (นายทุน: ' + n.a.investor + ')') : '';
         var dateStr = 'สัญญา: ' + fmtDate(n.a.start) + ' ถึง ' + fmtDate(n.a.end);
@@ -6022,8 +6190,9 @@ function sendWeeklyTelegramAlert(nearDue, overdue, grace) {
       grace.forEach(function(g, idx) {
         var invStr = g.a.investor ? (' (นายทุน: ' + g.a.investor + ')') : '';
         var dateStr = 'สัญญา: ' + fmtDate(g.a.start) + ' ถึง ' + fmtDate(g.a.end);
+        var extraStr = g.days ? (' | ⚠️ เกินสัญญา ' + g.days + ' วัน') : '';
         msg += (idx + 1) + '. <b>' + g.a.name + '</b>' + invStr + '\n' +
-               '   └ ' + dateStr + ' | ทุนรับซื้อ: ' + baht(g.a.principal) + ' บ.\n';
+               '   └ ' + dateStr + extraStr + ' | ทุนรับซื้อ: ' + baht(g.a.principal) + ' บ.\n';
       });
       msg += '\n';
     }
