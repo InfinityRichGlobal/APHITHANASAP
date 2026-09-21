@@ -5036,21 +5036,14 @@ function parseMonthsFromAgeText(txt) {
 // FLEX: เมนูหลัก (Admin Dashboard — Modern Executive App Grid)
 // ============================================================
 function adminMenuFlex() {
-  function gridTile(emoji, title, keyword, color) {
+  function gridButton(label, keyword, color) {
     return {
-      type: 'box',
-      layout: 'vertical',
+      type: 'button',
+      style: 'primary',
+      color: color,
+      height: 'sm',
       flex: 1,
-      backgroundColor: color,
-      cornerRadius: 'md',
-      paddingAll: 'md',
-      alignItems: 'center',
-      justifyContent: 'center',
-      action: { type: 'message', text: keyword },
-      contents: [
-        { type: 'text', text: emoji, size: 'xl', align: 'center' },
-        { type: 'text', text: title, size: 'xs', color: '#FFFFFF', weight: 'bold', align: 'center', margin: 'xs', wrap: true }
-      ]
+      action: { type: 'message', label: label, text: keyword }
     };
   }
 
@@ -5059,7 +5052,7 @@ function adminMenuFlex() {
     hero: {
       type: 'image',
       url: 'https://lh3.googleusercontent.com/d/1O53qTa-S3SjaYlLtonfq2cKGLcEKG7Nu',
-      aspectRatio: '1:1', size: 'full', offsetTop: '10px'
+      aspectRatio: '1:1', size: 'full'
     },
     body: {
       type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none',
@@ -5081,59 +5074,58 @@ function adminMenuFlex() {
 
         // ส่วนที่ 1: ข้อมูลและพอร์ตลงทุน
         {
-          type: 'box', layout: 'horizontal', alignItems: 'center', margin: 'md',
+          type: 'box', layout: 'vertical', margin: 'md',
           contents: [
-            { type: 'text', text: '📁 ข้อมูลและบริหารพอร์ต', size: 'xs', color: '#004D40', weight: 'bold', flex: 3 },
-            { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#A7F3D0', flex: 4 }
+            txt('📁 ข้อมูลและบริหารพอร์ต', 'xs', '#004D40', 'bold'),
+            { type: 'separator', margin: 'xs', color: '#A7F3D0' }
           ]
         },
         {
           type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
           contents: [
-            gridTile('📊', 'ภาพรวมพอร์ต', '#overview', '#004D40'),
-            gridTile('📋', 'เช็คสถานะ', '#status', '#2E7D32')
+            gridButton('📊 ภาพรวมพอร์ต', '#overview', '#004D40'),
+            gridButton('📋 เช็คสถานะ', '#status', '#2E7D32')
           ]
         },
         {
           type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
           contents: [
-            gridTile('🏘', 'เช็ครายแปลง', '#plots', '#00838F'),
-            gridTile('👤', 'ดูรายนายทุน', '#investor', '#1565C0')
+            gridButton('🏘 เช็ครายแปลง', '#plots', '#00838F'),
+            gridButton('👤 ดูรายนายทุน', '#investor', '#1565C0')
           ]
         },
 
         // ส่วนที่ 2: สัญญาและการแจ้งเตือน
         {
-          type: 'box', layout: 'horizontal', alignItems: 'center', margin: 'lg',
+          type: 'box', layout: 'vertical', margin: 'lg',
           contents: [
-            { type: 'text', text: '⏰ สัญญา & การแจ้งเตือน', size: 'xs', color: '#D84315', weight: 'bold', flex: 3 },
-            { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#FED7AA', flex: 4 }
+            txt('⏰ สัญญา & การแจ้งเตือน', 'xs', '#D84315', 'bold'),
+            { type: 'separator', margin: 'xs', color: '#FED7AA' }
           ]
         },
         {
           type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
           contents: [
-            gridTile('⏰', 'ครบกำหนดเดือนนี้', '#due', '#EF6C00'),
-            gridTile('📆', 'เลือกเดือน', '#expire', '#D84315')
+            gridButton('⏰ ครบเดือนนี้', '#due', '#EF6C00'),
+            gridButton('📆 เลือกเดือน', '#expire', '#D84315')
           ]
         },
         {
           type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
           contents: [
-            gridTile('🔔', 'แจ้งเตือนรายสัปดาห์', '#weekly', '#1A237E'),
-            gridTile('📊', 'แจ้งเตือนรายเดือน', '#monthly', '#004D40')
+            gridButton('🔔 เตือนสัปดาห์', '#weekly', '#1A237E'),
+            gridButton('📊 เตือนรายเดือน', '#monthly', '#004D40')
           ]
         },
 
-        // ส่วนที่ 3: คู่มือคีย์เวิร์ด
+        // ส่วนที่ 3: คู่มือคีย์เวิร์ด (Full Width)
         {
-          type: 'box', layout: 'horizontal', margin: 'lg',
-          backgroundColor: '#4B5563', cornerRadius: 'md',
-          paddingTop: 'sm', paddingBottom: 'sm', paddingStart: 'md', paddingEnd: 'md',
-          alignItems: 'center', justifyContent: 'center',
-          action: { type: 'message', text: '#manual' },
+          type: 'box', layout: 'vertical', margin: 'lg',
           contents: [
-            { type: 'text', text: '📖 คู่มือคีย์เวิร์ดคำสั่งทั้งหมด', size: 'xs', color: '#FFFFFF', weight: 'bold', align: 'center' }
+            {
+              type: 'button', style: 'primary', color: '#4B5563', height: 'sm',
+              action: { type: 'message', label: '📖 คู่มือคีย์เวิร์ดคำสั่งทั้งหมด', text: '#manual' }
+            }
           ]
         },
 
@@ -5915,12 +5907,16 @@ function textMsg(t) { return { type:'text', text:t }; }
 // LINE reply (ไม่เสียโควตา)
 // ============================================================
 function reply(replyToken, messages) {
-  UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
+  var resp = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
     method:'post', contentType:'application/json',
     headers:{ 'Authorization':'Bearer ' + LINE.token },
     payload: JSON.stringify({ replyToken: replyToken, messages: messages }),
     muteHttpExceptions: true
   });
+  var code = resp.getResponseCode();
+  if (code !== 200) {
+    console.error('LINE reply error (' + code + '): ' + resp.getContentText());
+  }
 }
 
 function parseQuery(q) {
