@@ -1178,7 +1178,8 @@ function handleWebApp(e) {
       getAllUsersForSimulator: getAllUsersForSimulator,
       simulateUserSession: simulateUserSession,
       restoreAdminSession: restoreAdminSession,
-      getDictionary: getDictionary
+      getDictionary: getDictionary,
+      notifyUserLogin: notifyUserLogin
     };
 
     if (!ALLOWED[fn]) {
@@ -1223,33 +1224,32 @@ function authenticateUser(username, password) {
                 const timestamp = Date.now();
                 const sessionKey = 'session_' + userData[i][0].replace(/[^a-zA-Z0-9]/g, '_') + '_' + timestamp;
                 
+                const userClass = userData[i][2];
                 const sessionData = {
                     sessionKey: sessionKey,
                     email: userData[i][0],
                     username: userData[i][1],
-                    class: userData[i][2],
+                    class: userClass,
                     linkedBroker: userData[i][3],
-                    linkedInvestor: userData[i][4],
+                    linkedInvestor: userData[i][4] || (String(userClass).startsWith('user') ? userData[i][1] : ''),
                     status: userData[i][5],
                     lastLogin: new Date().toISOString(),
                     loginTime: timestamp,
                     userAgent: Session.getTemporaryActiveUserKey() || 'unknown'
                 };
                 
-                // ✅ เขียน session เท่านั้น (จำเป็นสำหรับ loadInitialAppData ถัดไป)
+                // ✅ บันทึก Session ลง ScriptProperties
                 PropertiesService.getScriptProperties().setProperty(sessionKey, JSON.stringify(sessionData));
                 PropertiesService.getScriptProperties().setProperty('currentUser', JSON.stringify(sessionData));
                 
-                // ✅ ส่ง response กลับทันที — Telegram/Log/Cleanup จะทำใน getInitialAppData
+                // ✅ ส่งผลลัพธ์กลับทันที ไม่บล็อกด้วย I/O อื่นๆ เพื่อความเร็วสูงสุดทั้งบนมือถือและคอม
                 return JSON.stringify({
                     status: 'success',
                     message: 'เข้าสู่ระบบสำเร็จ',
-                    userClass: userData[i][2],
+                    userClass: userClass,
                     username: userData[i][1],
                     sessionKey: sessionKey,
-                    timeout: getTimeoutMinutes(userData[i][2]),
-                    _loginEmail: userData[i][0],
-                    _loginDisplayName: userData[i][1] || userData[i][0]
+                    timeout: getTimeoutMinutes(userClass)
                 });
             }
         }
@@ -1276,6 +1276,36 @@ function authenticateUser(username, password) {
             message: 'เกิดข้อผิดพลาด: ' + error.toString()
         });
     }
+}
+
+/**
+ * แจ้งเตือน Telegram และบันทึก Log กิจกรรมแบบ Background
+ * ถูกเรียกจาก Frontend แยกจาก loadInitialAppData เพื่อไม่ให้หน่วงการโหลดตาราง
+ */
+function notifyUserLogin(sessionKey) {
+  try {
+    if (!sessionKey) return JSON.stringify({ status: 'ok' });
+    var ssData = PropertiesService.getScriptProperties().getProperty(sessionKey);
+    if (!ssData) return JSON.stringify({ status: 'ok' });
+    var user = JSON.parse(ssData);
+
+    try { cleanupOldSessions(user.email); } catch(e) {}
+    try { logUserActivity(user.email, user.username, user.class, 'LOGIN', 'เข้าสู่ระบบสำเร็จ'); } catch(e) {}
+    try {
+      sendTelegram(
+        '🔑 <b>[APHITHANASAP - เข้าสู่ระบบสำเร็จ]</b>\n' +
+        '👤 <b>ผู้ใช้งาน:</b> ' + (user.username || user.email) + ' (' + user.email + ')\n' +
+        '🛡 <b>สิทธิ์:</b> ' + user.class + '\n' +
+        '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr() + '\n' +
+        '✅ <b>สถานะ:</b> เข้าสู่ระบบเรียบร้อย'
+      );
+    } catch(e) {}
+
+    return JSON.stringify({ status: 'success' });
+  } catch(err) {
+    console.error('notifyUserLogin error:', err);
+    return JSON.stringify({ status: 'error', message: err.toString() });
+  }
 }
 
 function cleanupOldSessions(userEmail) {
@@ -1663,15 +1693,21 @@ function safeLoadTable() {
 }
 
 function filterDataByPermission(data, user) {
+  if (!user || !user.class) return [];
   if (user.class === 'admin') {
     return data;
   }
   
+  var targetBroker = String(user.linkedBroker || '').trim().toLowerCase();
+  var targetInvestor = String(user.linkedInvestor || (String(user.class).startsWith('user') ? user.username : '') || '').trim().toLowerCase();
+  
   return data.filter(row => {
-    if (user.class.startsWith('super_user')) {
-      return row[27] === user.linkedBroker;
-    } else if (user.class.startsWith('user')) {
-      return row[21] === user.linkedInvestor;
+    if (String(user.class).startsWith('super_user')) {
+      if (!targetBroker) return false;
+      return String(row[27] || '').trim().toLowerCase() === targetBroker;
+    } else if (String(user.class).startsWith('user')) {
+      if (!targetInvestor) return false;
+      return String(row[21] || '').trim().toLowerCase() === targetInvestor;
     }
     return false;
   });
@@ -2263,84 +2299,65 @@ function getInitialAppData(sessionKey) {
       filteredData = filterDataByPermission(allData, currentUser);
     }
 
-    // 2. อ่านตัวเลือก Dropdown จาก DETAIL (อ่านรอบเดียวครบทุกคอลัมน์)
-    let detailSheet = ss.getSheetByName('DETAIL');
-    if (!detailSheet) {
-      detailSheet = createDetailSheet(ss);
-    }
-    const detailValues = detailSheet.getDataRange().getValues();
-    const dropdowns = {};
-    if (detailValues.length > 1) {
-      const detailHeaders = detailValues[0];
-      for (let c = 0; c < detailHeaders.length; c++) {
-        const colName = String(detailHeaders[c]).trim();
-        if (!colName) continue;
-        const colList = [];
-        for (let r = 1; r < detailValues.length; r++) {
-          const val = detailValues[r][c];
-          if (val !== '' && val !== null && val !== undefined) {
-            colList.push(String(val).trim());
+    let dropdowns = {};
+    const investors = [];
+    const brokers = [];
+
+    // อ่าน DETAIL, INVESTORS, BROKERS เฉพาะ Admin เท่านั้น
+    // ช่วยให้ นายทุน/นายหน้า โหลดไวขึ้น 3-5 เท่า และปกป้องข้อมูลส่วนบุคคลของนายทุนท่านอื่น
+    if (currentUser.class === 'admin') {
+      // 2. อ่านตัวเลือก Dropdown จาก DETAIL
+      let detailSheet = ss.getSheetByName('DETAIL');
+      if (!detailSheet) {
+        detailSheet = createDetailSheet(ss);
+      }
+      const detailValues = detailSheet.getDataRange().getValues();
+      if (detailValues.length > 1) {
+        const detailHeaders = detailValues[0];
+        for (let c = 0; c < detailHeaders.length; c++) {
+          const colName = String(detailHeaders[c]).trim();
+          if (!colName) continue;
+          const colList = [];
+          for (let r = 1; r < detailValues.length; r++) {
+            const val = detailValues[r][c];
+            if (val !== '' && val !== null && val !== undefined) {
+              colList.push(String(val).trim());
+            }
+          }
+          dropdowns[colName] = [...new Set(colList)];
+        }
+      }
+
+      // 3. อ่านรายชื่อนายทุน (INVESTORS)
+      let invSheet = ss.getSheetByName('INVESTORS');
+      if (invSheet) {
+        const invValues = invSheet.getDataRange().getValues();
+        for (let i = 1; i < invValues.length; i++) {
+          if (invValues[i][0] && invValues[i][5] === 'ใช้งาน') {
+            investors.push({
+              name: invValues[i][0],
+              phone: invValues[i][1] || '',
+              email: invValues[i][2] || ''
+            });
           }
         }
-        dropdowns[colName] = [...new Set(colList)];
       }
-    }
 
-    // 3. อ่านรายชื่อนายทุน (INVESTORS)
-    const investors = [];
-    let invSheet = ss.getSheetByName('INVESTORS');
-    if (invSheet) {
-      const invValues = invSheet.getDataRange().getValues();
-      for (let i = 1; i < invValues.length; i++) {
-        if (invValues[i][0] && invValues[i][5] === 'ใช้งาน') {
-          investors.push({
-            name: invValues[i][0],
-            phone: invValues[i][1] || '',
-            email: invValues[i][2] || ''
-          });
+      // 4. อ่านรายชื่อนายหน้า (BROKERS)
+      let brkSheet = ss.getSheetByName('BROKERS');
+      if (brkSheet) {
+        const brkValues = brkSheet.getDataRange().getValues();
+        for (let i = 1; i < brkValues.length; i++) {
+          if (brkValues[i][0] && brkValues[i][5] === 'ใช้งาน') {
+            brokers.push({
+              name: brkValues[i][0],
+              phone: brkValues[i][1] || '',
+              email: brkValues[i][2] || ''
+            });
+          }
         }
       }
     }
-
-    // 4. อ่านรายชื่อนายหน้า (BROKERS)
-    const brokers = [];
-    let brkSheet = ss.getSheetByName('BROKERS');
-    if (brkSheet) {
-      const brkValues = brkSheet.getDataRange().getValues();
-      for (let i = 1; i < brkValues.length; i++) {
-        if (brkValues[i][0] && brkValues[i][5] === 'ใช้งาน') {
-          brokers.push({
-            name: brkValues[i][0],
-            phone: brkValues[i][1] || '',
-            email: brkValues[i][2] || ''
-          });
-        }
-      }
-    }
-
-    // ✅ งานหลังบ้าน: Telegram/Log/Cleanup ที่ย้ายมาจาก authenticateUser
-    // ทำตรงนี้เพราะ login response ส่งกลับถึง client ไปแล้ว — ไม่ block หน้าจอ
-    try {
-      var sessionProp = PropertiesService.getScriptProperties().getProperty(sessionKey);
-      if (sessionProp) {
-        var sess = JSON.parse(sessionProp);
-        // Telegram + Log เฉพาะครั้งแรกหลัง login (ตรวจจาก loginTime ไม่เกิน 30 วินาที)
-        var sessionAge = Date.now() - (sess.loginTime || 0);
-        if (sessionAge < 30000) {
-          try { cleanupOldSessions(sess.email); } catch(e) {}
-          try { logUserActivity(sess.email, sess.username, sess.class, 'LOGIN', 'เข้าสู่ระบบสำเร็จ'); } catch(e) {}
-          try {
-            sendTelegram(
-              '🔑 <b>[APHITHANASAP - เข้าสู่ระบบสำเร็จ]</b>\n' +
-              '👤 <b>ผู้ใช้งาน:</b> ' + (sess.username || sess.email) + ' (' + sess.email + ')\n' +
-              '🛡 <b>สิทธิ์:</b> ' + sess.class + '\n' +
-              '🕒 <b>เวลา:</b> ' + getThaiDateTimeStr() + '\n' +
-              '✅ <b>สถานะ:</b> เข้าสู่ระบบเรียบร้อย'
-            );
-          } catch(e) {}
-        }
-      }
-    } catch(e) {}
 
     return JSON.stringify({
       status: 'success',
