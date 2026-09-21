@@ -5032,41 +5032,125 @@ function parseMonthsFromAgeText(txt) {
 // ============================================================
 // FLEX: เมนูหลัก
 // ============================================================
+// ============================================================
+// FLEX: เมนูหลัก (Admin Dashboard — Modern Executive App Grid)
+// ============================================================
 function adminMenuFlex() {
-var rows = [
-    menuButton('📊 ภาพรวมพอร์ต', '#overview', '#004D40'),
-    menuButton('📋 เช็คสถานะ', '#status', '#2E7D32'),
-    menuButton('🏘 เช็ครายแปลง', '#plots', '#00838F'),
-    menuButton('👤 ดูรายนายทุน', '#investor', '#1565C0'),
-    menuButton('⏰ ครบกำหนดเดือนนี้', '#due', '#EF6C00'),
-    menuButton('📆 ครบกำหนด (เลือกเดือน)', '#expire', '#D84315'),
-    menuButton('🔔 แจ้งเตือนรายสัปดาห์', '#weekly', '#1A237E'),
-    menuButton('📊 แจ้งเตือนรายเดือน', '#monthly', '#004D40'),
-    menuButton('📖 คู่มือคีย์เวิร์ด', '#manual', '#757575')
-];
-  // ★ เพิ่ม: hint คำสั่ง #id และ #พิมพ์ชื่อแปลง (เดิมหายไปจากเมนูแอดมิน)
-  rows.push({ type:'separator', margin:'md', color:'#EEEEEE' });
-  rows.push(txt('💡 พิมพ์ #id — ดู userId ตัวเอง', 'xxs', '#9E9E9E'));
-  rows.push(txt('💡 พิมพ์ชื่อแปลง — ค้นหาแปลงนั้นทันที', 'xxs', '#9E9E9E'));
+  function gridTile(emoji, title, keyword, color) {
+    return {
+      type: 'box',
+      layout: 'vertical',
+      flex: 1,
+      backgroundColor: color,
+      cornerRadius: 'md',
+      paddingAll: 'md',
+      alignItems: 'center',
+      justifyContent: 'center',
+      action: { type: 'message', text: keyword },
+      contents: [
+        { type: 'text', text: emoji, size: 'xl', align: 'center' },
+        { type: 'text', text: title, size: 'xs', color: '#FFFFFF', weight: 'bold', align: 'center', margin: 'xs', wrap: true }
+      ]
+    };
+  }
 
   var card = {
-    type:'bubble', size:'mega',
-    hero:{
-      type:'image',
-      url:'https://lh3.googleusercontent.com/d/1O53qTa-S3SjaYlLtonfq2cKGLcEKG7Nu',
-      aspectRatio:'1:1', size:'full', offsetTop:'10px'
+    type: 'bubble', size: 'mega',
+    hero: {
+      type: 'image',
+      url: 'https://lh3.googleusercontent.com/d/1O53qTa-S3SjaYlLtonfq2cKGLcEKG7Nu',
+      aspectRatio: '1:1', size: 'full', offsetTop: '10px'
     },
-    body:{
-      type:'box', layout:'vertical', paddingAll:'lg', spacing:'none',
-      contents:[
-        { type:'box', layout:'vertical', contents:[
-          txt('Admin • Dashboard', 'sm', '#1A1A1A', 'bold', null, 'center')
-        ]},
-        { type:'box', layout:'vertical', margin:'md', spacing:'sm', contents: rows }
-      ],
+    body: {
+      type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none',
+      contents: [
+        // หัวข้อ Dashboard แบบ Executive
+        {
+          type: 'box', layout: 'vertical', alignItems: 'center',
+          contents: [
+            {
+              type: 'box', layout: 'horizontal', backgroundColor: '#004D4015',
+              cornerRadius: 'xxl', paddingStart: 'md', paddingEnd: 'md', paddingTop: 'xs', paddingBottom: 'xs',
+              contents: [
+                txt('👑 ADMIN DASHBOARD', 'xxs', '#004D40', 'bold')
+              ]
+            },
+            { type: 'text', text: 'แผงควบคุมระบบจัดการทรัพย์สิน', size: 'xs', color: '#757575', align: 'center', margin: 'xs' }
+          ]
+        },
+
+        // ส่วนที่ 1: ข้อมูลและพอร์ตลงทุน
+        {
+          type: 'box', layout: 'horizontal', alignItems: 'center', margin: 'md',
+          contents: [
+            { type: 'text', text: '📁 ข้อมูลและบริหารพอร์ต', size: 'xs', color: '#004D40', weight: 'bold', flex: 3 },
+            { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#A7F3D0', flex: 4 }
+          ]
+        },
+        {
+          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
+          contents: [
+            gridTile('📊', 'ภาพรวมพอร์ต', '#overview', '#004D40'),
+            gridTile('📋', 'เช็คสถานะ', '#status', '#2E7D32')
+          ]
+        },
+        {
+          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
+          contents: [
+            gridTile('🏘', 'เช็ครายแปลง', '#plots', '#00838F'),
+            gridTile('👤', 'ดูรายนายทุน', '#investor', '#1565C0')
+          ]
+        },
+
+        // ส่วนที่ 2: สัญญาและการแจ้งเตือน
+        {
+          type: 'box', layout: 'horizontal', alignItems: 'center', margin: 'lg',
+          contents: [
+            { type: 'text', text: '⏰ สัญญา & การแจ้งเตือน', size: 'xs', color: '#D84315', weight: 'bold', flex: 3 },
+            { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#FED7AA', flex: 4 }
+          ]
+        },
+        {
+          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
+          contents: [
+            gridTile('⏰', 'ครบกำหนดเดือนนี้', '#due', '#EF6C00'),
+            gridTile('📆', 'เลือกเดือน', '#expire', '#D84315')
+          ]
+        },
+        {
+          type: 'box', layout: 'horizontal', spacing: 'sm', margin: 'sm',
+          contents: [
+            gridTile('🔔', 'แจ้งเตือนรายสัปดาห์', '#weekly', '#1A237E'),
+            gridTile('📊', 'แจ้งเตือนรายเดือน', '#monthly', '#004D40')
+          ]
+        },
+
+        // ส่วนที่ 3: คู่มือคีย์เวิร์ด
+        {
+          type: 'box', layout: 'horizontal', margin: 'lg',
+          backgroundColor: '#4B5563', cornerRadius: 'md',
+          paddingTop: 'sm', paddingBottom: 'sm', paddingStart: 'md', paddingEnd: 'md',
+          alignItems: 'center', justifyContent: 'center',
+          action: { type: 'message', text: '#manual' },
+          contents: [
+            { type: 'text', text: '📖 คู่มือคีย์เวิร์ดคำสั่งทั้งหมด', size: 'xs', color: '#FFFFFF', weight: 'bold', align: 'center' }
+          ]
+        },
+
+        // กล่อง Hint คำสั่งพิมพ์ตรง
+        {
+          type: 'box', layout: 'vertical', margin: 'md',
+          backgroundColor: '#F8FAFC', cornerRadius: 'md', paddingAll: 'sm',
+          borderWidth: '1px', borderColor: '#E2E8F0', spacing: 'xs',
+          contents: [
+            txt('💡 พิมพ์ #id — ดู LINE User ID ของคุณ', 'xxs', '#64748B'),
+            txt('💡 พิมพ์ชื่อแปลง — ค้นหาและดูข้อมูลแปลงทันที', 'xxs', '#64748B')
+          ]
+        }
+      ]
     }
   };
-  return { type:'flex', altText:'เมนูแอดมิน', contents: card };
+  return { type: 'flex', altText: '👑 เมนูแอดมิน (Admin Dashboard)', contents: card };
 }
 
 // ทุกแปลง ยกเว้นไถ่ถอน (แบ่งหน้าเผื่ออนาคตแปลงเยอะ)
@@ -5417,12 +5501,17 @@ function plotBubble(a, accent) {
   };
 }
 
-// แถวข้อมูลมินิมอล (key ซ้าย ค่าขวา)
+// แถวข้อมูลมินิมอล (key ซ้าย ค่าขวา) — flex 8:3 + wrap:false ป้องกันชื่อสถานะยาวตัดขึ้นบรรทัดใหม่
 function miniRow(k, v, valueColor) {
-  return { type:'box', layout:'horizontal', contents:[
-    txt(k, 'xs', '#9E9E9E', null, 5),
-    txt(v, 'xs', valueColor || '#424242', 'bold', 5, 'end')
-  ]};
+  return {
+    type: 'box',
+    layout: 'horizontal',
+    alignItems: 'center',
+    contents: [
+      { type: 'text', text: String(k), size: 'xs', color: '#616161', flex: 8, wrap: false },
+      { type: 'text', text: String(v), size: 'xs', color: valueColor || '#424242', weight: 'bold', flex: 3, align: 'end' }
+    ]
+  };
 }
 
 function statusDetailCarousel(status) {
@@ -6185,32 +6274,19 @@ function buildMonthlyFlexCard(count, principal, invMonth, invYear, dueInMonth, a
   var contents = [
     txt('ประจำเดือน ' + monthStr, 'xs', '#9E9E9E'),
 
-    // การ์ดสรุปการเงินพอร์ต (Top Financial Metrics)
+    // การ์ดสรุปการเงินพอร์ต: เงินต้นหมุนเวียนในระบบ (เต็มความกว้าง)
     {
       type: 'box',
-      layout: 'horizontal',
+      layout: 'vertical',
       margin: 'md',
-      spacing: 'sm',
+      backgroundColor: '#ECFDF5',
+      cornerRadius: 'md',
+      paddingAll: 'md',
+      borderWidth: '1px',
+      borderColor: '#A7F3D0',
       contents: [
-        {
-          type: 'box', layout: 'vertical', flex: 1,
-          backgroundColor: '#ECFDF5', cornerRadius: 'md', paddingAll: 'md',
-          borderWidth: '1px', borderColor: '#A7F3D0',
-          contents: [
-            txt('💰 เงินต้นหมุนเวียน', 'xxs', '#047857', 'bold'),
-            txt(baht(principal) + ' ฿', 'sm', '#064E3B', 'bold', null, null, 'shrinkToFit')
-          ]
-        },
-        {
-          type: 'box', layout: 'vertical', flex: 1,
-          backgroundColor: '#EFF6FF', cornerRadius: 'md', paddingAll: 'md',
-          borderWidth: '1px', borderColor: '#BFDBFE',
-          contents: [
-            txt('📈 ผลตอบแทนนายทุน', 'xxs', '#1D4ED8', 'bold'),
-            txt(baht(invMonth) + ' ฿/ด.', 'sm', '#1E3A8A', 'bold', null, null, 'shrinkToFit'),
-            txt('ปีละ ~' + baht(invYear) + ' ฿', 'xxs', '#3B82F6')
-          ]
-        }
+        txt('💰 เงินต้นหมุนเวียนในระบบ', 'xxs', '#047857', 'bold'),
+        txt(baht(principal) + ' ฿', 'md', '#064E3B', 'bold', null, null, 'shrinkToFit')
       ]
     },
 
@@ -6384,9 +6460,7 @@ function sendMonthlyTelegramSummary(count, principal, invMonth, invYear, dueInMo
               '• ไถ่ถอนแล้ว: ' + (count['ไถ่ถอนแล้ว'] || 0) + ' แปลง\n' +
               '• หลุดเป็นกรรมสิทธิ์: ' + (count['หลุดเป็นกรรมสิทธิ์'] || 0) + ' แปลง\n\n' +
               '💰 <b>สรุปยอดการเงินพอร์ต:</b>\n' +
-              '• เงินต้นรวม: <b>' + baht(principal) + '</b> บาท\n' +
-              '• ดอกเบี้ยนายทุน/เดือน: <b>' + baht(invMonth) + '</b> บาท\n' +
-              '• ดอกเบี้ยนายทุน/ปี: <b>' + baht(invYear) + '</b> บาท\n\n';
+              '• เงินต้นหมุนเวียนรวม: <b>' + baht(principal) + '</b> บาท\n\n';
               
     if (dueInMonth && dueInMonth.length > 0) {
       msg += '⏰ <b>แปลงที่ครบกำหนดในเดือนนี้ (' + dueInMonth.length + ' แปลง):</b>\n';
