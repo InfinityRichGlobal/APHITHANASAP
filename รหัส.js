@@ -5987,110 +5987,197 @@ function getWeeklyAlertFlex() {
 }
 
 function buildAlertFlex(nearDue, overdue, grace) {
+  return buildAlertCarousel(nearDue, overdue, grace);
+}
+
+function statMiniBox(title, countText, titleColor, countColor, bgColor, borderColor) {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    flex: 1,
+    backgroundColor: bgColor,
+    cornerRadius: 'md',
+    paddingAll: 'sm',
+    borderWidth: '1px',
+    borderColor: borderColor,
+    contents: [
+      txt(title, 'xxs', titleColor, 'bold', null, 'center'),
+      txt(countText, 'sm', countColor, 'bold', null, 'center')
+    ]
+  };
+}
+
+function makeWeeklyOverviewBubble(todayStr, nearDue, overdue, grace) {
+  var hasIssues = overdue.length > 0 || nearDue.length > 0 || grace.length > 0;
+  var bodyContents = [
+    txt(todayStr, 'xs', '#64748B'),
+    {
+      type: 'box',
+      layout: 'horizontal',
+      margin: 'md',
+      spacing: 'sm',
+      contents: [
+        statMiniBox('เกินกำหนด', overdue.length + ' แปลง', '#DC2626', '#991B1B', '#FEF2F2', '#FECACA'),
+        statMiniBox('ใกล้ครบ', nearDue.length + ' แปลง', '#D97706', '#92400E', '#FFFBEB', '#FDE68A'),
+        statMiniBox('ผ่อนผัน', grace.length + ' แปลง', '#EA580C', '#9A3412', '#FFF7ED', '#FED7AA')
+      ]
+    }
+  ];
+
+  if (hasIssues) {
+    bodyContents.push({
+      type: 'box',
+      layout: 'vertical',
+      margin: 'lg',
+      backgroundColor: '#F1F5F9',
+      cornerRadius: 'md',
+      paddingAll: 'md',
+      alignItems: 'center',
+      contents: [
+        txt('👉 ปัดขวาเพื่อดูรายละเอียดแยกตามหมวดหมู่', 'xs', '#475569', 'bold')
+      ]
+    });
+  } else {
+    bodyContents.push({
+      type: 'box',
+      layout: 'vertical',
+      margin: 'lg',
+      backgroundColor: '#ECFDF5',
+      cornerRadius: 'md',
+      paddingAll: 'md',
+      alignItems: 'center',
+      contents: [
+        txt('✅ สัปดาห์นี้ไม่มีสัญญาที่เกินกำหนดหรือใกล้ครบกำหนด', 'xs', '#047857', 'bold')
+      ]
+    });
+  }
+
+  return {
+    type: 'bubble',
+    size: 'mega',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#1A237E',
+      paddingAll: 'lg',
+      contents: [
+        txt('APHITHANASAP ALERT', 'xxs', '#9FA8DA', 'bold'),
+        txt('📋 สรุปสถานะสัปดาห์นี้', 'md', '#FFFFFF', 'bold')
+      ]
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: 'lg',
+      spacing: 'none',
+      contents: bodyContents
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: 'md',
+      contents: [{
+        type: 'button',
+        style: 'primary',
+        color: '#1A237E',
+        height: 'sm',
+        action: { type: 'uri', label: 'เปิดระบบดูรายละเอียดทั้งหมด', uri: LINE.webUrl }
+      }]
+    }
+  };
+}
+
+function makeCategoryPlotBubble(catTitle, catColor, items, totalCount, tagColor) {
+  var bodyContents = [];
+  var limit = 4;
+  var showItems = items.slice(0, limit);
+  showItems.forEach(function(item) {
+    bodyContents.push(alertItemBox(item.a, item.tag, tagColor));
+  });
+
+  if (totalCount > limit) {
+    bodyContents.push({
+      type: 'box',
+      layout: 'vertical',
+      margin: 'md',
+      contents: [
+        txt('...และอีก ' + (totalCount - limit) + ' แปลง (ดูทั้งหมดในระบบ)', 'xxs', '#9CA3AF', null, null, 'center')
+      ]
+    });
+  }
+
+  return {
+    type: 'bubble',
+    size: 'mega',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: catColor,
+      paddingAll: 'lg',
+      contents: [
+        txt('APHITHANASAP ALERT', 'xxs', '#FFFFFFCC', 'bold'),
+        txt(catTitle + ' (' + totalCount + ' แปลง)', 'md', '#FFFFFF', 'bold')
+      ]
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: 'md',
+      spacing: 'none',
+      contents: bodyContents
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: 'md',
+      contents: [{
+        type: 'button',
+        style: 'primary',
+        color: catColor,
+        height: 'sm',
+        action: { type: 'uri', label: 'เปิดระบบดูหมวดนี้', uri: LINE.webUrl }
+      }]
+    }
+  };
+}
+
+function buildAlertCarousel(nearDue, overdue, grace) {
   var todayStr = new Date().toLocaleDateString('th-TH', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 
-  var content = [
-    txt(todayStr, 'xs', '#9E9E9E')
-  ];
+  var bubbles = [];
+  // Slide 1: ภาพรวมสัปดาห์
+  bubbles.push(makeWeeklyOverviewBubble(todayStr, nearDue, overdue, grace));
 
-  // กล่องสรุปตัวเลขภาพรวม (Executive Mini Dashboard Cards)
-  content.push({
-    type: 'box',
-    layout: 'horizontal',
-    margin: 'md',
-    spacing: 'sm',
-    contents: [
-      {
-        type: 'box', layout: 'vertical', flex: 1,
-        backgroundColor: '#FEF2F2', cornerRadius: 'md', paddingAll: 'sm',
-        borderWidth: '1px', borderColor: '#FECACA',
-        contents: [
-          txt('เกินกำหนด', 'xxs', '#DC2626', 'bold', null, 'center'),
-          txt(overdue.length + ' แปลง', 'sm', '#991B1B', 'bold', null, 'center')
-        ]
-      },
-      {
-        type: 'box', layout: 'vertical', flex: 1,
-        backgroundColor: '#FFFBEB', cornerRadius: 'md', paddingAll: 'sm',
-        borderWidth: '1px', borderColor: '#FDE68A',
-        contents: [
-          txt('ใกล้ครบสัญญา', 'xxs', '#D97706', 'bold', null, 'center'),
-          txt(nearDue.length + ' แปลง', 'sm', '#92400E', 'bold', null, 'center')
-        ]
-      },
-      {
-        type: 'box', layout: 'vertical', flex: 1,
-        backgroundColor: '#FFF7ED', cornerRadius: 'md', paddingAll: 'sm',
-        borderWidth: '1px', borderColor: '#FED7AA',
-        contents: [
-          txt('ผ่อนผัน', 'xxs', '#EA580C', 'bold', null, 'center'),
-          txt(grace.length + ' แปลง', 'sm', '#9A3412', 'bold', null, 'center')
-        ]
-      }
-    ]
-  });
-
-  // 1. หมวดเกินกำหนดแล้ว (Overdue)
-  if (overdue.length) {
-    content.push(sectionHeader('🔴 สัญญาเกินกำหนด (' + overdue.length + ' แปลง)', '#DC2626'));
-    var showOverdue = overdue.slice(0, 6);
-    showOverdue.forEach(function(o) {
-      content.push(alertItemBox(o.a, 'เกินมา ' + o.days + ' วัน', '#DC2626'));
+  // Slide 2: สัญญาเกินกำหนด (ถ้ามี)
+  if (overdue.length > 0) {
+    var overdueItems = overdue.map(function(o) {
+      return { a: o.a, tag: 'เกินมา ' + o.days + ' วัน' };
     });
-    if (overdue.length > 6) {
-      content.push(txt('...และอีก ' + (overdue.length - 6) + ' แปลงที่เกินกำหนด (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
-    }
+    bubbles.push(makeCategoryPlotBubble('🔴 สัญญาเกินกำหนด', '#DC2626', overdueItems, overdue.length, '#DC2626'));
   }
 
-  // 2. หมวดใกล้ครบสัญญา (Near Due)
-  if (nearDue.length) {
-    content.push(sectionHeader('⏰ ใกล้ครบสัญญา (' + nearDue.length + ' แปลง)', '#D97706'));
-    var showNearDue = nearDue.slice(0, 6);
-    showNearDue.forEach(function(n) {
-      var badgeColor = n.days <= 7 ? '#DC2626' : (n.days <= 30 ? '#D97706' : '#2563EB');
-      content.push(alertItemBox(n.a, 'เหลืออีก ' + n.days + ' วัน', badgeColor));
+  // Slide 3: สัญญาใกล้ครบ (ถ้ามี)
+  if (nearDue.length > 0) {
+    var nearDueItems = nearDue.map(function(n) {
+      return { a: n.a, tag: 'เหลืออีก ' + n.days + ' วัน' };
     });
-    if (nearDue.length > 6) {
-      content.push(txt('...และอีก ' + (nearDue.length - 6) + ' แปลงที่ใกล้ครบ (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
-    }
+    bubbles.push(makeCategoryPlotBubble('⏰ ใกล้ครบสัญญา', '#D97706', nearDueItems, nearDue.length, '#D97706'));
   }
 
-  // 3. หมวดอยู่ระหว่างผ่อนผัน (Grace Period)
-  if (grace.length) {
-    content.push(sectionHeader('⚠️ อยู่ระหว่างผ่อนผัน (' + grace.length + ' แปลง)', '#B45309'));
-    var showGrace = grace.slice(0, 6);
-    showGrace.forEach(function(g) {
+  // Slide 4: สัญญาผ่อนผัน (ถ้ามี)
+  if (grace.length > 0) {
+    var graceItems = grace.map(function(g) {
       var tag = g.days ? ('ควรตัดสินใจ (เกินมา ' + g.days + ' วัน)') : 'ควรตัดสินใจ';
-      content.push(alertItemBox(g.a, tag, '#B45309'));
+      return { a: g.a, tag: tag };
     });
-    if (grace.length > 6) {
-      content.push(txt('...และอีก ' + (grace.length - 6) + ' แปลงที่ผ่อนผัน (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
-    }
-  }
-
-  if (!overdue.length && !nearDue.length && !grace.length) {
-    content.push(txt('✅ สัปดาห์นี้ไม่มีสัญญาที่เกินกำหนดหรือใกล้ครบกำหนดครับ', 'sm', '#16A34A', 'bold', null, 'center'));
+    bubbles.push(makeCategoryPlotBubble('⚠️ อยู่ระหว่างผ่อนผัน', '#EA580C', graceItems, grace.length, '#EA580C'));
   }
 
   return {
-    type: 'bubble', size: 'mega',
-    body: {
-      type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none',
-      contents: [
-        txt('📋 แจ้งเตือนสถานะสัญญา', 'lg', '#1A1A1A', 'bold'),
-        { type: 'box', layout: 'vertical', height: '3px', backgroundColor: '#1A237E', margin: 'md', cornerRadius: 'sm', contents: [] },
-        { type: 'box', layout: 'vertical', margin: 'md', spacing: 'sm', contents: content }
-      ]
-    },
-    footer: {
-      type: 'box', layout: 'vertical', paddingAll: 'md',
-      contents: [{
-        type: 'button', style: 'primary', color: '#1A237E', height: 'sm',
-        action: { type: 'uri', label: 'เปิดระบบดูรายละเอียดทั้งหมด', uri: LINE.webUrl }
-      }]
-    }
+    type: 'carousel',
+    contents: bubbles
   };
 }
 
@@ -6161,58 +6248,9 @@ function alertItemBox(a, tagText, tagColor) {
   };
 }
 
-function triggerWeeklyAlertNow() {
-  try {
-    weeklyContractAlert();
-    return JSON.stringify({ status: 'success', message: 'ยิงแจ้งเตือนรายสัปดาห์เข้า LINE และ Telegram เรียบร้อย' });
-  } catch(e) {
-    return JSON.stringify({ status: 'error', message: e.toString() });
-  }
-}
-
-function getMonthlyFlex() {
-  var assets = readAssets();
-  var count = {}, principal = 0, invMonth = 0, invYear = 0;
-  var dueInMonth = [];
-  var attentionPlots = [];
-
-  var now = new Date();
-  var curMonth = now.getMonth();
-  var curYear = now.getFullYear();
-
-  assets.forEach(function(a) {
-    count[a.status] = (count[a.status] || 0) + 1;
-    if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
-      principal += a.principal;
-      invMonth += a.invMonth;
-      invYear += a.invYear;
-
-      if (a.end) {
-        var dEnd = new Date(a.end);
-        if (dEnd.getMonth() === curMonth && dEnd.getFullYear() === curYear) {
-          dueInMonth.push(a);
-        }
-      }
-    } else if (a.status === 'อยู่ระหว่างผ่อนผัน') {
-      var left = a.end ? daysLeft(a.end) : null;
-      attentionPlots.push({ a: a, days: (left !== null && left < 0) ? Math.abs(left) : null });
-    }
-  });
-
-  return {
-    type: 'flex',
-    altText: '📊 สรุปพอร์ตการลงทุนประจำเดือน',
-    contents: buildMonthlyFlexCard(count, principal, invMonth, invYear, dueInMonth, attentionPlots)
-  };
-}
-
-function buildMonthlyFlexCard(count, principal, invMonth, invYear, dueInMonth, attentionPlots) {
-  var monthStr = new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
-
+function makeMonthlyOverviewBubble(monthStr, count, principal, hasExtraSlides) {
   var contents = [
-    txt('ประจำเดือน ' + monthStr, 'xs', '#9E9E9E'),
-
-    // การ์ดสรุปการเงินพอร์ต: เงินต้นหมุนเวียนในระบบ (เต็มความกว้าง)
+    txt('ประจำเดือน ' + monthStr, 'xs', '#64748B'),
     {
       type: 'box',
       layout: 'vertical',
@@ -6227,64 +6265,107 @@ function buildMonthlyFlexCard(count, principal, invMonth, invYear, dueInMonth, a
         txt(baht(principal) + ' ฿', 'md', '#064E3B', 'bold', null, null, 'shrinkToFit')
       ]
     },
-
-    // แถบแจกแจงสถานะแปลงทั้งหมด
-    sectionHeader('📌 สถานะทรัพย์สินในระบบ', '#004D40')
+    {
+      type: 'box',
+      layout: 'horizontal',
+      margin: 'md',
+      alignItems: 'center',
+      contents: [
+        { type: 'box', layout: 'vertical', width: '3px', height: '12px', backgroundColor: '#004D40', cornerRadius: 'xs', contents: [] },
+        txt('📌 สถานะทรัพย์สินในระบบ', 'xs', '#004D40', 'bold', null, null, null, null)
+      ]
+    }
   ];
 
-  // สรุปสถานะ
   Object.keys(STYLE).forEach(function(s) {
     if (count[s]) {
       contents.push(miniRow(STYLE[s].emoji + ' ' + s, count[s] + ' แปลง', STYLE[s].color));
     }
   });
 
-  // ส่วนที่ 1: แปลงที่ครบกำหนดในเดือนนี้ (ถ้ามี)
-  if (dueInMonth.length > 0) {
-    contents.push(sectionHeader('⏰ แปลงครบกำหนดในเดือนนี้ (' + dueInMonth.length + ' แปลง)', '#D97706'));
-    var showDue = dueInMonth.slice(0, 5);
-    showDue.forEach(function(d) {
-      contents.push(alertItemBox(d, 'ครบกำหนด ' + fmtDate(d.end), '#D97706'));
+  if (hasExtraSlides) {
+    contents.push({
+      type: 'box',
+      layout: 'vertical',
+      margin: 'md',
+      backgroundColor: '#F1F5F9',
+      cornerRadius: 'md',
+      paddingAll: 'sm',
+      alignItems: 'center',
+      contents: [
+        txt('👉 ปัดขวาเพื่อดูแปลงครบกำหนดและติดตาม', 'xxs', '#475569', 'bold')
+      ]
     });
-    if (dueInMonth.length > 5) {
-      contents.push(txt('...และอีก ' + (dueInMonth.length - 5) + ' แปลงที่ครบกำหนดเดือนนี้ (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
-    }
-  } else {
-    contents.push({ type: 'separator', margin: 'md', color: '#EEEEEE' });
-    contents.push(txt('✅ เดือนนี้ไม่มีแปลงที่ครบกำหนดสัญญา', 'xs', '#16A34A', null, null, 'center'));
-  }
-
-  // ส่วนที่ 2: แปลงที่ต้องติดตามพิเศษ (ผ่อนผัน) (ถ้ามี)
-  if (attentionPlots.length > 0) {
-    contents.push(sectionHeader('⚠️ แปลงที่ต้องติดตามพิเศษ (' + attentionPlots.length + ' แปลง)', '#B45309'));
-    var showAtt = attentionPlots.slice(0, 5);
-    showAtt.forEach(function(g) {
-      var tag = g.days ? ('ควรตัดสินใจ (เกินมา ' + g.days + ' วัน)') : 'ควรตัดสินใจ';
-      contents.push(alertItemBox(g.a, tag, '#B45309'));
-    });
-    if (attentionPlots.length > 5) {
-      contents.push(txt('...และอีก ' + (attentionPlots.length - 5) + ' แปลงที่ต้องติดตาม (ดูในระบบ)', 'xxs', '#9CA3AF', null, null, 'center'));
-    }
   }
 
   return {
-    type: 'bubble', size: 'mega',
-    body: {
-      type: 'box', layout: 'vertical', paddingAll: 'lg', spacing: 'none',
+    type: 'bubble',
+    size: 'mega',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#004D40',
+      paddingAll: 'lg',
       contents: [
-        txt('📊 สรุปพอร์ตการลงทุนประจำเดือน', 'lg', '#1A1A1A', 'bold'),
-        { type: 'box', layout: 'vertical', height: '3px', backgroundColor: '#004D40', margin: 'md', cornerRadius: 'sm', contents: [] },
-        { type: 'box', layout: 'vertical', margin: 'md', spacing: 'sm', contents: contents }
+        txt('APHITHANASAP SUMMARY', 'xxs', '#80CBC4', 'bold'),
+        txt('📊 สรุปพอร์ตประจำเดือน', 'md', '#FFFFFF', 'bold')
       ]
     },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: 'lg',
+      spacing: 'sm',
+      contents: contents
+    },
     footer: {
-      type: 'box', layout: 'vertical', paddingAll: 'md',
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: 'md',
       contents: [{
-        type: 'button', style: 'primary', color: '#004D40', height: 'sm',
+        type: 'button',
+        style: 'primary',
+        color: '#004D40',
+        height: 'sm',
         action: { type: 'uri', label: 'เปิดระบบดูพอร์ตทั้งหมด', uri: LINE.webUrl }
       }]
     }
   };
+}
+
+function buildMonthlyCarousel(count, principal, invMonth, invYear, dueInMonth, attentionPlots) {
+  var monthStr = new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  var hasExtraSlides = (dueInMonth && dueInMonth.length > 0) || (attentionPlots && attentionPlots.length > 0);
+
+  var bubbles = [];
+  // Slide 1: ภาพรวมพอร์ตประจำเดือน
+  bubbles.push(makeMonthlyOverviewBubble(monthStr, count, principal, hasExtraSlides));
+
+  // Slide 2: แปลงครบกำหนดในเดือนนี้ (ถ้ามี)
+  if (dueInMonth && dueInMonth.length > 0) {
+    var dueItems = dueInMonth.map(function(d) {
+      return { a: d, tag: 'ครบกำหนด ' + fmtDate(d.end) };
+    });
+    bubbles.push(makeCategoryPlotBubble('⏰ ครบกำหนดในเดือนนี้', '#D97706', dueItems, dueInMonth.length, '#D97706'));
+  }
+
+  // Slide 3: แปลงที่ต้องติดตามพิเศษ (ถ้ามี)
+  if (attentionPlots && attentionPlots.length > 0) {
+    var attItems = attentionPlots.map(function(g) {
+      var tag = g.days ? ('ควรตัดสินใจ (เกินมา ' + g.days + ' วัน)') : 'ควรตัดสินใจ';
+      return { a: g.a, tag: tag };
+    });
+    bubbles.push(makeCategoryPlotBubble('⚠️ แปลงที่ต้องติดตามพิเศษ', '#EA580C', attItems, attentionPlots.length, '#EA580C'));
+  }
+
+  return {
+    type: 'carousel',
+    contents: bubbles
+  };
+}
+
+function buildMonthlyFlexCard(count, principal, invMonth, invYear, dueInMonth, attentionPlots) {
+  return buildMonthlyCarousel(count, principal, invMonth, invYear, dueInMonth, attentionPlots);
 }
 
 function monthlySummary() {
