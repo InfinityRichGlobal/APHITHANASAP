@@ -6248,6 +6248,51 @@ function alertItemBox(a, tagText, tagColor) {
   };
 }
 
+function triggerWeeklyAlertNow() {
+  try {
+    weeklyContractAlert();
+    return JSON.stringify({ status: 'success', message: 'ยิงแจ้งเตือนรายสัปดาห์เข้า LINE และ Telegram เรียบร้อย' });
+  } catch(e) {
+    return JSON.stringify({ status: 'error', message: e.toString() });
+  }
+}
+
+function getMonthlyFlex() {
+  var assets = readAssets();
+  var count = {}, principal = 0, invMonth = 0, invYear = 0;
+  var dueInMonth = [];
+  var attentionPlots = [];
+
+  var now = new Date();
+  var curMonth = now.getMonth();
+  var curYear = now.getFullYear();
+
+  assets.forEach(function(a) {
+    count[a.status] = (count[a.status] || 0) + 1;
+    if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
+      principal += a.principal;
+      invMonth += a.invMonth;
+      invYear += a.invYear;
+
+      if (a.end) {
+        var dEnd = new Date(a.end);
+        if (dEnd.getMonth() === curMonth && dEnd.getFullYear() === curYear) {
+          dueInMonth.push(a);
+        }
+      }
+    } else if (a.status === 'อยู่ระหว่างผ่อนผัน') {
+      var left = a.end ? daysLeft(a.end) : null;
+      attentionPlots.push({ a: a, days: (left !== null && left < 0) ? Math.abs(left) : null });
+    }
+  });
+
+  return {
+    type: 'flex',
+    altText: '📊 สรุปพอร์ตการลงทุนประจำเดือน',
+    contents: buildMonthlyCarousel(count, principal, invMonth, invYear, dueInMonth, attentionPlots)
+  };
+}
+
 function makeMonthlyOverviewBubble(monthStr, count, principal, hasExtraSlides) {
   var contents = [
     txt('ประจำเดือน ' + monthStr, 'xs', '#64748B'),
