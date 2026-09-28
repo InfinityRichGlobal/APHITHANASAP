@@ -5268,6 +5268,113 @@ function riskCarousel() {
   return messages;
 }
 
+function formatPaymentAmount(str) {
+  var s = String(str || '').trim();
+  return s.replace(/\b\d{4,}\b/g, function(n) {
+    return Number(n).toLocaleString('th-TH');
+  });
+}
+
+function paymentItemBox(p, idx) {
+  var raw = String(p || '').trim();
+  if (!raw) return null;
+
+  var parts = raw.split('|').map(function(s){ return s.trim(); }).filter(Boolean);
+
+  if (parts.length >= 2) {
+    var datePart = parts[0] || '';
+    var amountPart = formatPaymentAmount(parts[1] || '');
+    var methodPart = parts.slice(2).join(' | ');
+
+    var headerRow = {
+      type: 'box',
+      layout: 'horizontal',
+      alignItems: 'center',
+      contents: [
+        {
+          type: 'box',
+          layout: 'vertical',
+          backgroundColor: '#E8F5E9',
+          cornerRadius: 'sm',
+          paddingStart: 'sm',
+          paddingEnd: 'sm',
+          paddingTop: 'xs',
+          paddingBottom: 'xs',
+          contents: [
+            txt('ครั้งที่ ' + (idx + 1), 'xxs', '#2E7D32', 'bold')
+          ]
+        },
+        txt('📅 ' + datePart, 'xs', '#475569', null, 1, 'end', true)
+      ]
+    };
+
+    var detailContents = [
+      txt('💰 ' + amountPart, 'sm', '#0F172A', 'bold', 1, null, true)
+    ];
+
+    if (methodPart) {
+      var mIcon = methodPart.indexOf('สด') > -1 ? '💵 ' : (methodPart.indexOf('โอน') > -1 ? '🏦 ' : '📝 ');
+      detailContents.push(
+        txt(mIcon + methodPart, 'xs', '#64748B', null, 1, 'end', true)
+      );
+    }
+
+    var detailRow = {
+      type: 'box',
+      layout: 'horizontal',
+      margin: 'xs',
+      alignItems: 'center',
+      contents: detailContents
+    };
+
+    return {
+      type: 'box',
+      layout: 'vertical',
+      margin: 'sm',
+      backgroundColor: '#F8FAFC',
+      borderWidth: '1px',
+      borderColor: '#E2E8F0',
+      cornerRadius: 'md',
+      paddingAll: 'sm',
+      contents: [headerRow, detailRow]
+    };
+  }
+
+  return {
+    type: 'box',
+    layout: 'vertical',
+    margin: 'sm',
+    backgroundColor: '#F8FAFC',
+    borderWidth: '1px',
+    borderColor: '#E2E8F0',
+    cornerRadius: 'md',
+    paddingAll: 'sm',
+    contents: [
+      {
+        type: 'box',
+        layout: 'horizontal',
+        alignItems: 'center',
+        contents: [
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#E8F5E9',
+            cornerRadius: 'sm',
+            paddingStart: 'sm',
+            paddingEnd: 'sm',
+            paddingTop: 'xs',
+            paddingBottom: 'xs',
+            contents: [
+              txt('ครั้งที่ ' + (idx + 1), 'xxs', '#2E7D32', 'bold')
+            ]
+          },
+          txt(formatPaymentAmount(raw), 'xs', '#334155', null, 1, 'end', true)
+        ]
+      }
+    ]
+  };
+}
+
 // carousel รายละเอียดสถานะที่เลือก
 // การ์ดดีเทลแอดวานซ์ (กดชื่อแปลง → เด้งตัวนี้)
 function plotAdvanceBubble(a) {
@@ -5321,11 +5428,25 @@ function plotAdvanceBubble(a) {
   var p3 = [];
   var payRows = [];
   (a.payments || []).forEach(function(p, idx) {
-    if (p !== '' && p != null) payRows.push(miniRow('ครั้งที่ ' + (idx+1), String(p)));
+    if (p !== '' && p != null) {
+      var box = paymentItemBox(p, idx);
+      if (box) payRows.push(box);
+    }
   });
   if (a.prepaid > 0 || payRows.length) {
     p3.push(txt('📋 ประวัติชำระ' + (payRows.length ? ' (' + payRows.length + ' ครั้ง)' : ''), 'sm', '#455A64', 'bold'));
-    if (a.prepaid > 0) p3.push(miniRow('หักดอกล่วงหน้า', baht(a.prepaid) + ' ฿', '#EF6C00'));
+    if (a.prepaid > 0) {
+      p3.push({
+        type: 'box',
+        layout: 'horizontal',
+        alignItems: 'center',
+        margin: 'xs',
+        contents: [
+          txt('หักดอกล่วงหน้า', 'xs', '#616161', null, 6),
+          txt(baht(a.prepaid) + ' ฿', 'xs', '#EF6C00', 'bold', 6, 'end')
+        ]
+      });
+    }
     payRows.forEach(function(r){ p3.push(r); });
   }
 
@@ -6185,6 +6306,7 @@ function alertItemBox(a, tagText, tagColor) {
   var invName = a.investor || '(ไม่ระบุ)';
   var dateStr = a.end ? fmtDate(a.end) : '-';
   var moneyStr = a.principal ? baht(a.principal) + ' ฿' : '-';
+  var safeName = String(a.name || '').trim();
 
   return {
     type: 'box',
@@ -6195,14 +6317,21 @@ function alertItemBox(a, tagText, tagColor) {
     borderColor: '#E5E7EB',
     cornerRadius: 'md',
     paddingAll: 'md',
+    action: {
+      type: 'postback',
+      label: safeName.length > 40 ? safeName.substring(0, 38) + '..' : safeName,
+      data: ('plot|' + safeName).substring(0, 300),
+      displayText: safeName
+    },
     contents: [
-      // แถวที่ 1: ชื่อแปลงเต็มความกว้าง (ไม่ตัดคำ)
+      // แถวที่ 1: ชื่อแปลงเต็มความกว้าง + ลิงก์แตะดูดีเทล
       {
         type: 'box',
         layout: 'horizontal',
         alignItems: 'center',
         contents: [
-          txt(a.name, 'sm', '#1E293B', 'bold', 1)
+          txt(a.name, 'sm', '#1E293B', 'bold', 8),
+          txt('แตะดูดีเทล →', 'xxs', '#2563EB', 'bold', 4, 'end')
         ]
       },
       // แถวที่ 2: ป้ายสถานะ / นับถอยหลัง (Badge)
