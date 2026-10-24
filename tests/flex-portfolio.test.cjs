@@ -44,7 +44,8 @@ function fixture(rows) {
   }
   for (const name of ['readAssets','toCE','daysLeft','baht','fmtDate','ageText','ageMonthsDays','monthsForInterest',
     'parseMonthsFromAgeText','formatPaymentAmount','paymentItemBox','fmtUpdateDate','miniRow','txt','bubble','textMsg','plotBubble',
-    'plotAdvanceBubble','expireMonthCarousel','overviewFlex','getMonthlyFlex','monthlySummary',
+    'plotAdvanceBubble','expireMonthCarousel','riskCarousel','statusDetailCarousel','summaryLeadBubble',
+    'overviewFlex','getMonthlyFlex','monthlySummary',
     'makeMonthlyOverviewBubble','buildMonthlyCarousel','buildMonthlyFlexCard','makeCategoryPlotBubble','alertItemBox']) {
     vm.runInContext(fn(backend, name), c);
   }
@@ -112,22 +113,24 @@ test('monthly due and attention lists retain their original eligibility', () => 
   assert.equal(telegram[0][3], 1440000);
 });
 
-test('maturity summary and small asset cards retain full amounts, ages and countdowns', () => {
+test('maturity summary and wider asset cards keep full amounts, ages and countdowns on one line', () => {
   const rows = [row(1, statuses[0], 4500000), row(2, statuses[1], 10200000)];
   const { c } = fixture(rows);
   const messages = c.expireMonthCarousel(8, 2027);
   assert.equal(pair(messages[0], 'เงินต้นรวม').text, '14,700,000 ฿');
   assert.equal(pair(messages[0], 'ดอกนายทุน/ปีรวม').text, '1,440,000 ฿');
   const card = c.plotBubble(c.readAssets()[0], '#EF6C00');
+  assert.equal(card.size, 'mega');
   assert.equal(pair(card, 'เงินต้น').text, '4,500,000 ฿');
   assert.equal(pair(card, 'ดอกนายทุน/ปี').text, '720,000 ฿');
   for (const label of ['เงินต้น', 'ดอกนายทุน/ปี', 'อายุสัญญา', 'ครบกำหนด']) {
-    assert.equal(pair(card, label).wrap, true, label);
-    assert(!pair(card, label).maxLines, label + ' must not be line-clamped');
+    assert.equal(pair(card, label).wrap, false, label);
+    assert.equal(pair(card, label).adjustMode, 'shrink-to-fit', label);
+    assert(!pair(card, label).text.includes('\n'), label);
   }
-  for (const text of texts(messages)) {
-    assert.equal(text.wrap, true, text.text);
-    assert(!text.maxLines, text.text);
+  for (const label of ['เงินต้นรวม', 'ดอกนายทุน/ปีรวม']) {
+    assert.equal(pair(messages[0], label).wrap, false);
+    assert.equal(pair(messages[0], label).adjustMode, 'shrink-to-fit');
   }
 });
 
@@ -139,23 +142,38 @@ test('detail card renders the complete status and preserves financial and paymen
   const card = c.plotAdvanceBubble(c.readAssets()[0]);
   const status = pair(card, 'สถานะ');
   assert.equal(status.text, statuses[1]);
-  assert.equal(status.wrap, true);
-  assert(!status.maxLines);
+  assert.equal(status.wrap, false);
+  assert.equal(status.adjustMode, 'shrink-to-fit');
   assert.equal(pair(card, 'เงินต้น').text, '700,000 ฿');
   assert.equal(pair(card, 'นายทุนได้/ปี').text, '112,000 ฿');
   assert(values(card).includes('28,000 ฿'));
   assert(values(card).some(t => t.includes('140,000')));
 });
 
-test('key/value layout gives long values at least half the available width and permits full wrapping', () => {
+test('single-line rows reserve only the label width and give the rest to the complete value', () => {
   const { c } = fixture([]);
   for (const [label, value] of [['เงินต้น', '999,999,999 ฿'], ['อายุสัญญา','12 ปี 11 เดือน 29 วัน'],
     ['สถานะ', statuses[1]], ['ดอกนายทุน/ปีรวม', '2,352,000 ฿']]) {
     const box = c.miniRow(label, value);
-    assert(box.contents[1].flex >= box.contents[0].flex);
-    for (const t of box.contents) { assert.equal(t.wrap, true); assert(!t.maxLines); }
+    assert.equal(box.contents[0].flex, 0);
+    assert.equal(box.contents[1].flex, 1);
+    for (const t of box.contents) assert.equal(t.wrap, false);
+    assert.equal(box.contents[1].adjustMode, 'shrink-to-fit');
     assert.equal(box.height, undefined);
     assert.equal(box.maxHeight, undefined);
     assert.equal(box.contents[1].text, value);
   }
+});
+
+test('status, risk and maturity carousels use the same wider size for all bubbles', () => {
+  const rows = [row(1, statuses[0], 4500000), row(2, statuses[2], 700000)];
+  const { c } = fixture(rows);
+  const messages = [...c.statusDetailCarousel(statuses[0]), ...c.riskCarousel(), ...c.expireMonthCarousel(8, 2027)];
+  let carousels = 0;
+  for (const message of messages) {
+    if (message.contents.type !== 'carousel') continue;
+    carousels++;
+    for (const bubble of message.contents.contents) assert.equal(bubble.size, 'mega');
+  }
+  assert.equal(carousels, 3);
 });

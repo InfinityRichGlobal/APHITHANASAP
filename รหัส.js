@@ -5330,7 +5330,7 @@ function riskCarousel() {
   assets.sort(function(x, y){ return (daysLeft(x.end)||0) - (daysLeft(y.end)||0); });
 
   var lead = {
-    type:'bubble', size:'kilo',
+    type:'bubble', size:'mega',
     body:{ type:'box', layout:'vertical', paddingAll:'xl', spacing:'md', justifyContent:'center', backgroundColor:'#C62828', contents:[
       txt('⚠️ ต้องจับตา', 'lg', '#FFFFFF', 'bold'),
       txt(assets.length + ' แปลง', 'xxl', '#FFFFFF', 'bold'),
@@ -5616,7 +5616,7 @@ function plotBubble(a, accent) {
   rows.push(miniRow('ดอกนายทุน/ปี', baht(a.invYear) + ' ฿'));
 
   return {
-    type:'bubble', size:'kilo',
+    type:'bubble', size:'mega',
     body:{
       type:'box', layout:'vertical', paddingAll:'lg', spacing:'none',
       action:{ type:'postback', label: a.name.length > 20 ? a.name.substring(0,18)+'..' : a.name, data:'plot|' + a.name },
@@ -5635,16 +5635,17 @@ function plotBubble(a, accent) {
   };
 }
 
-// Give values half the row and allow both cells to grow without truncating financial/status data.
+// Fit the label to its text, then give the value all remaining width on one line.
+// Use mega cards for room; shrink-to-fit is only a fallback for unusually long values.
 function miniRow(k, v, valueColor) {
   return {
     type: 'box',
     layout: 'horizontal',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     spacing: 'sm',
     contents: [
-      { type: 'text', text: String(k), size: 'xs', color: '#616161', flex: 1, wrap: true },
-      { type: 'text', text: String(v), size: 'xs', color: valueColor || '#424242', weight: 'bold', flex: 1, align: 'end', wrap: true }
+      { type: 'text', text: String(k), size: 'xs', color: '#616161', flex: 0, wrap: false },
+      { type: 'text', text: String(v), size: 'xs', color: valueColor || '#424242', weight: 'bold', flex: 1, align: 'end', wrap: false, adjustMode: 'shrink-to-fit' }
     ]
   };
 }
@@ -5681,7 +5682,7 @@ function statusDetailCarousel(status) {
 // การ์ดสรุปนำหน้า carousel
 function summaryLeadBubble(title, count, accent) {
   return {
-    type:'bubble', size:'kilo',
+    type:'bubble', size:'mega',
     body:{ type:'box', layout:'vertical', paddingAll:'xl', justifyContent:'center', spacing:'md',
       backgroundColor: accent,
       contents:[
