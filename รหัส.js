@@ -4987,9 +4987,29 @@ function daysLeft(d) {
 }
 function baht(n) { return Math.round(Number(n)||0).toLocaleString('th-TH'); }
 
-function readAssets() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LINE.sheetData);
-  var data = sheet.getDataRange().getValues();
+// Match index.html updateStatistics: an ID is required; only redeemed principal is excluded.
+// Use the raw rows so partially completed records follow the dashboard's rules too.
+function sumOutstandingPrincipal_(data) {
+  var principal = 0;
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (row[0] && row[COL.status-1] !== 'ไถ่ถอนแล้ว') {
+      principal += parseFloat(row[COL.principal-1]) || 0;
+    }
+  }
+  return principal;
+}
+
+function readPortfolioData_() {
+  var data = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LINE.sheetData).getDataRange().getValues();
+  return { assets: readAssets(data), principal: sumOutstandingPrincipal_(data) };
+}
+
+function readAssets(data) {
+  if (!data) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LINE.sheetData);
+    data = sheet.getDataRange().getValues();
+  }
   var out = [];
   for (var i = 1; i < data.length; i++) {
     var r = data[i];
@@ -5230,12 +5250,12 @@ function menuButton(label, keyword, color) {
 // FLEX: ภาพรวมพอร์ต
 // ============================================================
 function overviewFlex() {
-  var assets = readAssets();
-  var count = {}, principal = 0, invMonth = 0, invYear = 0, risk = 0;
+  var portfolio = readPortfolioData_();
+  var assets = portfolio.assets;
+  var count = {}, principal = portfolio.principal, invMonth = 0, invYear = 0, risk = 0;
   assets.forEach(function(a) {
     count[a.status] = (count[a.status]||0) + 1;
     if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
-      principal += a.principal;
       invMonth += a.invMonth;   // ดอกนายทุน
       invYear += a.invYear;
       var l = daysLeft(a.end);
@@ -5615,15 +5635,16 @@ function plotBubble(a, accent) {
   };
 }
 
-// แถวข้อมูลมินิมอล (key ซ้าย ค่าขวา) — flex 8:3 + wrap:false ป้องกันชื่อสถานะยาวตัดขึ้นบรรทัดใหม่
+// Give values half the row and allow both cells to grow without truncating financial/status data.
 function miniRow(k, v, valueColor) {
   return {
     type: 'box',
     layout: 'horizontal',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    spacing: 'sm',
     contents: [
-      { type: 'text', text: String(k), size: 'xs', color: '#616161', flex: 8, wrap: false },
-      { type: 'text', text: String(v), size: 'xs', color: valueColor || '#424242', weight: 'bold', flex: 3, align: 'end' }
+      { type: 'text', text: String(k), size: 'xs', color: '#616161', flex: 1, wrap: true },
+      { type: 'text', text: String(v), size: 'xs', color: valueColor || '#424242', weight: 'bold', flex: 1, align: 'end', wrap: true }
     ]
   };
 }
@@ -6446,8 +6467,9 @@ function triggerWeeklyAlertNow() {
 }
 
 function getMonthlyFlex() {
-  var assets = readAssets();
-  var count = {}, principal = 0, invMonth = 0, invYear = 0;
+  var portfolio = readPortfolioData_();
+  var assets = portfolio.assets;
+  var count = {}, principal = portfolio.principal, invMonth = 0, invYear = 0;
   var dueInMonth = [];
   var attentionPlots = [];
 
@@ -6458,7 +6480,6 @@ function getMonthlyFlex() {
   assets.forEach(function(a) {
     count[a.status] = (count[a.status] || 0) + 1;
     if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
-      principal += a.principal;
       invMonth += a.invMonth;
       invYear += a.invYear;
 
@@ -6495,7 +6516,7 @@ function makeMonthlyOverviewBubble(monthStr, count, principal, hasExtraSlides) {
       borderColor: '#A7F3D0',
       contents: [
         txt('💰 เงินต้นหมุนเวียนในระบบ', 'xxs', '#047857', 'bold'),
-        txt(baht(principal) + ' ฿', 'md', '#064E3B', 'bold', null, null, 'shrinkToFit')
+        txt(baht(principal) + ' ฿', 'md', '#064E3B', 'bold')
       ]
     },
     {
@@ -6602,8 +6623,9 @@ function buildMonthlyFlexCard(count, principal, invMonth, invYear, dueInMonth, a
 }
 
 function monthlySummary() {
-  var assets = readAssets();
-  var count = {}, principal = 0, invMonth = 0, invYear = 0;
+  var portfolio = readPortfolioData_();
+  var assets = portfolio.assets;
+  var count = {}, principal = portfolio.principal, invMonth = 0, invYear = 0;
   var dueInMonth = [];
   var attentionPlots = [];
 
@@ -6614,7 +6636,6 @@ function monthlySummary() {
   assets.forEach(function(a) {
     count[a.status] = (count[a.status] || 0) + 1;
     if (a.status === 'ดำเนินการอยู่' || a.status === 'ดำเนินการอยู่ (ต่อดอก)') {
-      principal += a.principal;
       invMonth += a.invMonth;
       invYear += a.invYear;
 
