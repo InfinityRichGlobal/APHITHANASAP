@@ -4731,6 +4731,8 @@ display: flex;
 
   // รายชื่อฟังก์ชันที่ไม่ควร auto-retry สุ่มสี่สุ่มห้า เพื่อป้องกันไฟล์ซ้ำหรือบันทึกเบิ้ล
   const NO_RETRY_FN = new Set([
+    'reserveNextRowAndFolders',
+    'deleteIncompleteData',
     'uploadFilesByCategory',
     'uploadFilesToSpecificFolder',
     'saveFullFormData',
@@ -6600,7 +6602,7 @@ initThaiDateSelector('paymentDateGroup');
         if (value) {
             document.getElementById('previewFolderName').textContent = 'XX.' + value;
             preview.classList.remove('d-none');
-            createBtn.disabled = false;
+            createBtn.disabled = isCreatingAsset;
         } else {
             preview.classList.add('d-none');
             createBtn.disabled = true;
@@ -6616,36 +6618,9 @@ initThaiDateSelector('paymentDateGroup');
         }
         this.dataset.processing = 'true';
         
-        const form = document.getElementById('assetForm');
-        const rowNumber = document.getElementById('rowNumber').value;
-        
-        const isCompleted = window.completedRows && window.completedRows.has(rowNumber);
-        
-        console.log(' Row:', rowNumber);
-        console.log(' Is completed?', isCompleted);
-        
-        if (!isCompleted) {
-            console.log('️ Data not completed, calling resetForm');
-            resetForm();
-        } else {
-            console.log('✅ Data was completed, cleaning form without delete');
-            form.reset();
-            form.classList.remove('was-validated');
-            form.removeAttribute('data-saved');
-            
-            document.querySelectorAll('.preview-container').forEach(container => {
-                container.innerHTML = '';
-            });
-            
-            autoCalc();
-            calculateLandSize();
-            updateSummary();
-            
-            document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
-            
-            console.log('✅ Form cleaned without deleting data');
-        }
-        
+        // resetForm verifies ownership and save state before any draft cleanup.
+        resetForm();
+
         setTimeout(() => {
             this.dataset.processing = 'false';
         }, 100);
@@ -6729,73 +6704,115 @@ function formatPhoneNumber(e) {
     e.target.value = value;
 }
 
+var isCreatingAsset = false;
+var currentRowData = null;
+var pendingAssetCreation = null;
+var assetFormRevision = 0;
+
+function clearAssetForm() {
+    assetFormRevision++;
+    const form = document.getElementById('assetForm');
+    form.reset();
+    form.classList.remove('was-validated');
+    form.removeAttribute('data-saved');
+    delete form.dataset.requestId;
+    delete form.dataset.saveAttempted;
+    delete form.dataset.savedPayload;
+    document.getElementById('rowNumber').value = '';
+    document.getElementById('mainFolderId').value = '';
+    document.getElementById('isEditMode').value = 'false';
+    currentRowData = null;
+    ['deedImages', 'locationImages', 'transactionImages', 'vdoFiles'].forEach(id => {
+        const input = document.getElementById(id);
+        const container = id === 'transactionImages' ? input.closest('.row') : input.closest('.col-md-4');
+        input.style.display = '';
+        input.disabled = false;
+        if (container) {
+            const label = container.querySelector('label');
+            if (label) label.style.display = '';
+            container.querySelectorAll('.simple-file-header').forEach(header => header.remove());
+        }
+    });
+    document.querySelectorAll('#assetForm .preview-container').forEach(container => { container.innerHTML = ''; });
+    setThaiDateSelectorValue('startDateGroup', '');
+    setThaiDateSelectorValue('endDateGroup', '');
+    autoCalc();
+    calculateLandSize();
+    updateSummary();
+    document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
+}
+
 function showAssetNameModal() {
     if (currentUserClass !== 'admin') {
         showAlert('คุณไม่มีสิทธิ์ในการเพิ่มข้อมูล (เฉพาะ Admin เท่านั้น)');
         return;
     }
-    
-    document.getElementById('newAssetName').value = '';
-    document.getElementById('assetPreview').classList.add('d-none');
-    document.getElementById('createAssetBtn').disabled = true;
+    if (isCreatingAsset || isSubmitting) return;
+    const sessionKey = localStorage.getItem('userSessionKey');
+    try { pendingAssetCreation = JSON.parse(sessionStorage.getItem('pendingAssetCreation') || 'null'); } catch (e) {}
+    if (pendingAssetCreation && pendingAssetCreation.sessionKey !== sessionKey) pendingAssetCreation = null;
+    const input = document.getElementById('newAssetName');
+    input.value = pendingAssetCreation ? pendingAssetCreation.assetName : '';
+    input.readOnly = !!pendingAssetCreation;
+    document.getElementById('assetPreview').classList.toggle('d-none', !input.value);
+    document.getElementById('previewFolderName').textContent = 'XX.' + input.value;
+    document.getElementById('createAssetBtn').disabled = !input.value;
     assetNameModal.show();
 }
 
 function createAsset() {
+    if (isCreatingAsset || isSubmitting) return;
     const assetName = document.getElementById('newAssetName').value.trim();
-    
-    if (!assetName) {
-        showAlert('กรุณากรอกชื่อทรัพย์สิน');
+    if (!assetName) { showAlert('กรุณากรอกชื่อทรัพย์สิน'); return; }
+    const sessionKey = localStorage.getItem('userSessionKey');
+    if (!sessionKey) { showAlert('Session หมดอายุ กรุณาเข้าสู่ระบบใหม่'); return; }
+    if (!pendingAssetCreation) {
+        pendingAssetCreation = { requestId: crypto.randomUUID(), assetName: assetName, sessionKey: sessionKey };
+    }
+    if (pendingAssetCreation.assetName !== assetName || pendingAssetCreation.sessionKey !== sessionKey) {
+        showAlert('กรุณาลองคำขอสร้างทรัพย์สินเดิมให้เสร็จก่อน');
         return;
     }
-    
+    // Keep the same ID across retries/reloads when the server response is lost.
+    try { sessionStorage.setItem('pendingAssetCreation', JSON.stringify(pendingAssetCreation)); } catch (e) {}
+    isCreatingAsset = true;
+    document.getElementById('createAssetBtn').disabled = true;
     assetNameModal.hide();
     showProgress('กำลังสร้างทรัพย์สิน...', 'กำลังสร้างโฟลเดอร์และเตรียมข้อมูล', 20);
-    
+    const request = pendingAssetCreation;
     google.script.run
         .withSuccessHandler(function(result) {
-            updateProgress('กำลังเตรียมฟอร์ม...', 60);
-            
             try {
-                const data = JSON.parse(result);
-                
-                if (data.status === 'success') {
-                    currentRowData = data;
-                    
-                    document.getElementById('rowNumber').value = data.rowNumber;
-                    document.getElementById('mainFolderId').value = data.mainFolderId;
-                    document.getElementById('assetName').value = data.assetName;
-                    document.getElementById('isEditMode').value = 'false';
-                    
-                    if (window.completedRows) {
-                        window.completedRows.delete(data.rowNumber);
-                        console.log(' New form opened, removed from completed:', data.rowNumber);
-                    }
-                    
-                    const form = document.getElementById('assetForm');
-                    form.removeAttribute('data-saved');
-                    console.log(' New form opened, data-saved cleared');
-                    
-                    document.getElementById('assetModalLabel').innerHTML = 
-                        '<i class="bi bi-plus-circle"></i> เพิ่มข้อมูลทรัพย์สิน - ' + data.rowNumber + '.' + data.assetName;
-
-                    hideProgress();
-                    assetModal.show();
-                    
-                } else {
-                    hideProgress();
-                    showAlert('เกิดข้อผิดพลาด: ' + data.message);
-                }
+                const data = typeof result === 'string' ? JSON.parse(result) : result;
+                if (data.status !== 'success') throw new Error(data.message);
+                clearAssetForm();
+                currentRowData = data;
+                document.getElementById('rowNumber').value = data.rowNumber;
+                document.getElementById('mainFolderId').value = data.mainFolderId;
+                document.getElementById('assetName').value = data.assetName;
+                document.getElementById('assetForm').dataset.requestId = request.requestId;
+                if (window.completedRows) window.completedRows.delete(String(data.rowNumber));
+                document.getElementById('assetModalLabel').textContent = 'เพิ่มข้อมูลทรัพย์สิน - ' + data.rowNumber + '.' + data.assetName;
+                hideProgress();
+                assetModal.show();
+                pendingAssetCreation = null;
+                document.getElementById('newAssetName').value = '';
+                try { sessionStorage.removeItem('pendingAssetCreation'); } catch (e) {}
             } catch (e) {
                 hideProgress();
-                showAlert('เกิดข้อผิดพลาดในการแปลงข้อมูล: ' + e.message);
+                showAlert('สร้างทรัพย์สินยังไม่เสร็จ: ' + e.message + '\nกดเพิ่มข้อมูลใหม่เพื่อลองคำขอเดิมอีกครั้ง');
+            } finally {
+                isCreatingAsset = false;
+                document.getElementById('createAssetBtn').disabled = false;
             }
         })
         .withFailureHandler(function(error) {
+            isCreatingAsset = false;
+            document.getElementById('createAssetBtn').disabled = false;
             hideProgress();
-            showAlert('เกิดข้อผิดพลาดในการสร้างข้อมูล: ' + error.message);
+            showAlert('ยังไม่ได้รับผลการสร้าง: ' + error.message + '\nกดเพิ่มข้อมูลใหม่เพื่อลองคำขอเดิมอีกครั้ง');
         })
-        .reserveNextRowAndFolders(assetName);
+        .reserveNextRowAndFolders(request.assetName, request.requestId, request.sessionKey);
 }
 
 var isSubmitting = false;  // กันกดเซฟซ้ำระหว่างกำลังบันทึก
@@ -6847,6 +6864,8 @@ async function submitAll() {
         
         const data = {
             rowNumber: formData.get('rowNumber'),
+            sessionKey: localStorage.getItem('userSessionKey'),
+            requestId: form.dataset.requestId || '',
             mainFolderId: formData.get('mainFolderId'),
             isEditMode: isEditMode,
             formData: {
@@ -6901,7 +6920,9 @@ async function submitAll() {
             updateProgress('กำลังบันทึกข้อมูล...', 30);
         }
         
-        const saveResult = await new Promise((resolve, reject) => {
+        form.dataset.saveAttempted = 'true';
+        const savePayload = JSON.stringify(data);
+        const saveResult = form.dataset.savedPayload === savePayload ? JSON.stringify({ status: 'success' }) : await new Promise((resolve, reject) => {
             if (isEditMode) {
                 google.script.run
                     .withSuccessHandler(resolve)
@@ -6921,6 +6942,10 @@ async function submitAll() {
         }
         
         console.log('✅ Data saved successfully for row:', data.rowNumber);
+        form.setAttribute('data-saved', 'true');
+        form.dataset.savedPayload = savePayload;
+        window.completedRows = window.completedRows || new Set();
+        window.completedRows.add(String(rowNumber));
         
         if (!isEditMode) {
             updateProgress('กำลังอัพโหลดไฟล์...', 50);
@@ -6931,48 +6956,16 @@ async function submitAll() {
         
         updateProgress('เสร็จสิ้น!', 100);
         
-        setTimeout(() => {
-            hideProgress();
-            
-            window.completedRows = window.completedRows || new Set();
-            window.completedRows.add(rowNumber);
-            console.log('✅ Row marked as completed:', rowNumber);
-            
-            if (window.savingRowNumbers) {
-                window.savingRowNumbers.delete(rowNumber);
-                console.log(' Row protection removed:', rowNumber);
-            }
-            
-            form.reset();
-            form.classList.remove('was-validated');
-            form.removeAttribute('data-saved');
-            document.getElementById('isEditMode').value = 'false';
-            
-            document.querySelectorAll('.preview-container').forEach(container => {
-                container.innerHTML = '';
-            });
-            
-            autoCalc();
-            calculateLandSize();
-            updateSummary();
-            document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
-            
-            console.log(' Form cleaned before closing modal');
-            
-            assetModal.hide();
-            
-            if (isEditMode) {
-                showSuccessModal('อัพเดทสำเร็จ', 'อัพเดทข้อมูลทรัพย์สิน ' + rowNumber + ' เรียบร้อยแล้ว');
-            } else {
-                showSuccessModal('สำเร็จ', 'บันทึกข้อมูลและอัพโหลดไฟล์สำเร็จ');
-            }
-            
-            setTimeout(() => {
-                loadTable();
-            }, 1000);
-            
-        }, 1000);
-        
+        hideProgress();
+        if (window.savingRowNumbers) window.savingRowNumbers.delete(rowNumber);
+        assetModal.hide();
+        if (isEditMode) {
+            showSuccessModal('อัพเดทสำเร็จ', 'อัพเดทข้อมูลทรัพย์สิน ' + rowNumber + ' เรียบร้อยแล้ว');
+        } else {
+            showSuccessModal('สำเร็จ', 'บันทึกข้อมูลและอัพโหลดไฟล์สำเร็จ');
+        }
+        setTimeout(() => { loadTable(); }, 1000);
+
     } catch (error) {
         const rowNumber = document.getElementById('rowNumber').value;
         if (window.savingRowNumbers) {
@@ -6981,7 +6974,9 @@ async function submitAll() {
         }
         
         hideProgress();
-        showAlert('เกิดข้อผิดพลาด: ' + error.message);
+        const saved = document.getElementById('assetForm').getAttribute('data-saved') === 'true';
+        showAlert((saved ? 'ข้อมูลทรัพย์สินบันทึกแล้ว แต่อัปโหลดไฟล์ยังไม่ครบ: ' : 'เกิดข้อผิดพลาด: ') + error.message +
+            (saved ? '\nกรุณากดบันทึกอีกครั้งเพื่อลองอัปโหลดไฟล์ที่เหลือ' : ''), 'error');
         console.error('Submit error:', error);
     } finally {
         // ปลดล็อกปุ่มบันทึกเสมอ ไม่ว่าสำเร็จหรือผิดพลาด
@@ -7201,48 +7196,22 @@ function showError(message) {
 }
 
 function resetForm() {
+    const form = document.getElementById('assetForm');
     const rowNumber = document.getElementById('rowNumber').value;
     const mainFolderId = document.getElementById('mainFolderId').value;
-    const isEditMode = document.getElementById('isEditMode').value;
-    
-    const isCompleted = window.completedRows && window.completedRows.has(rowNumber);
+    const isEditMode = document.getElementById('isEditMode').value === 'true';
+    const isCompleted = window.completedRows && window.completedRows.has(String(rowNumber));
     const isSaving = window.savingRowNumbers && window.savingRowNumbers.has(rowNumber);
-    
-    console.log(' Reset Form Check:');
-    console.log('- Row Number:', rowNumber);
-    console.log('- Is Edit Mode:', isEditMode);
-    console.log('- Is Completed:', isCompleted);
-    console.log('- Is Saving:', isSaving);
-    
-    if (isEditMode === 'false' && rowNumber && mainFolderId && !isCompleted && !isSaving) {
-        console.log('️ Deleting incomplete data - Row:', rowNumber);
+    // Closing a modal during a write must not reset its files or delete its row.
+    if (isSaving || isSubmitting) return;
+    const requestId = form.dataset.requestId;
+    if (!isEditMode && requestId && rowNumber && mainFolderId && !isCompleted && !form.dataset.saveAttempted) {
         google.script.run
-            .withSuccessHandler(function(result) {
-                console.log('ลบข้อมูลที่ไม่สมบูรณ์เรียบร้อย');
-            })
-            .withFailureHandler(function(error) {
-                console.error('ไม่สามารถลบข้อมูลได้:', error);
-            })
-            .deleteIncompleteData(rowNumber, mainFolderId);
-    } else {
-        console.log('✅ Skipping delete - Data completed or being saved');
+            .withSuccessHandler(function() {})
+            .withFailureHandler(function(error) { console.error('ไม่สามารถลบข้อมูลร่างได้:', error); })
+            .deleteIncompleteData(rowNumber, mainFolderId, requestId, localStorage.getItem('userSessionKey'));
     }
-    
-    document.getElementById('assetForm').reset();
-    document.getElementById('assetForm').classList.remove('was-validated');
-    
-    const form = document.getElementById('assetForm');
-    form.removeAttribute('data-saved');
-    
-    document.querySelectorAll('.preview-container').forEach(container => {
-        container.innerHTML = '';
-    });
-    
-    autoCalc();
-    calculateLandSize();
-    updateSummary();
-    
-    document.getElementById('savedPayments').innerHTML = 'ยังไม่มีการบันทึกการชำระค่าต่างตอบแทนพิเศษ';
+    clearAssetForm();
 }
 
 function loadDropdownOptions() {
@@ -9463,64 +9432,47 @@ function uploadFilesToFolder(fileData, folderId) {
         .uploadFilesToSpecificFolder(fileData, folderId);
 }
 
+// Reuse each file's upload name after a lost response; the backend can return the existing file.
+var assetUploadNames = new WeakMap();
 async function uploadFiles(files, rowNumber, category) {
-    if (!files || files.length === 0) return;
-
-    const results = [];
-    const total = files.length;
-
-    // ส่งทีละไฟล์ (เร็วกว่า + ไม่ค้าง + เห็น progress จริง)
+    const uploadedFiles = [];
+    const failedFiles = [];
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
-
-        if (file.size > 200 * 1024 * 1024) {
-            console.warn('File too large, skip:', file.name);
-            continue;
-        }
-
-        // แสดง progress ส่งไฟล์ต้นฉบับความละเอียดเต็ม 100%
-        const pct = Math.round((i / total) * 40) + 50;
-        updateProgress('กำลังอัพโหลด ' + category + ' (' + (i + 1) + '/' + total + '): ' + file.name, pct);
-
-        // อ่านไฟล์ต้นฉบับเป็น base64 (ทีละไฟล์ ไม่รอครบทั้งชุด)
-        const base64 = await new Promise(function(resolve, reject) {
-            const reader = new FileReader();
-            reader.onload = function() { resolve(reader.result); };
-            reader.onerror = function() { reject(new Error('อ่านไฟล์ไม่ได้: ' + file.name)); };
-            reader.readAsDataURL(file);
-        });
-
-        const singleFile = [{
-            name: category + '_' + Date.now() + '_' + i + '_' + file.name,
-            data: base64,
-            mimeType: file.type,
-            size: file.size
-        }];
-
-        // ส่งไฟล์เดียวนี้ไป backend แล้วรอให้เสร็จก่อนไปไฟล์ถัดไป
         try {
-            const data = await new Promise(function(resolve, reject) {
+            if (file.size > 200 * 1024 * 1024) throw new Error('ไฟล์ใหญ่เกิน 200 MB');
+            updateProgress('กำลังอัพโหลด ' + category + ' (' + (i + 1) + '/' + files.length + '): ' + file.name,
+                Math.round((i / files.length) * 40) + 50);
+            const base64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('อ่านไฟล์ไม่ได้'));
+                reader.readAsDataURL(file);
+            });
+            let names = assetUploadNames.get(file);
+            if (!names) { names = {}; assetUploadNames.set(file, names); }
+            const key = String(rowNumber) + ':' + category;
+            if (!names[key]) names[key] = category + '_' + crypto.randomUUID() + '_' + file.name;
+            const singleFile = [{ name: names[key], data: base64, mimeType: file.type, size: file.size }];
+            const result = await new Promise((resolve, reject) => {
                 google.script.run
-                    .withSuccessHandler(function(result) {
+                    .withSuccessHandler(response => {
                         try {
-                            const d = JSON.parse(result);
-                            if (d.status === 'success') resolve(d);
-                            else reject(new Error(d.message));
-                        } catch (e) { reject(e); }
+                            const data = typeof response === 'string' ? JSON.parse(response) : response;
+                            if (data.status !== 'success' || !data.uploadedFiles || data.uploadedFiles.length !== 1) {
+                                reject(new Error(data.message || 'เซิร์ฟเวอร์ยังไม่ยืนยันการอัปโหลดไฟล์'));
+                            } else resolve(data);
+                        } catch (error) { reject(error); }
                     })
-                    .withFailureHandler(function(error) {
-                        reject(new Error(error.message));
-                    })
+                    .withFailureHandler(reject)
                     .uploadFilesByCategory(singleFile, rowNumber, category);
             });
-            if (data.uploadedFiles) results.push.apply(results, data.uploadedFiles);
-        } catch (err) {
-            console.error('อัพโหลดไฟล์ล้มเหลว:', file.name, err.message);
-            // ไฟล์เดียวพัง ไม่ทำให้ทั้งชุดล้ม — ข้ามไปไฟล์ถัดไป
+            uploadedFiles.push(...result.uploadedFiles);
+        } catch (error) {
+            failedFiles.push({ name: file.name, message: error.message || String(error) });
         }
     }
-
-    return { status: 'success', uploadedFiles: results, totalFiles: results.length };
+    return { status: failedFiles.length ? 'error' : 'success', uploadedFiles: uploadedFiles, failedFiles: failedFiles };
 }
 
 function viewFile(url, name, type) {
@@ -10166,26 +10118,20 @@ async function uploadAllFiles(rowNumber) {
         { id: 'transactionImages', category: 'transaction' },
         { id: 'vdoFiles', category: 'vdo' }
     ];
-    
-    let totalFiles = 0;
-    let uploadedFiles = 0;
-    
-    fileInputs.forEach(function(input) {
-        totalFiles += document.getElementById(input.id).files.length;
-    });
-    
-    if (totalFiles === 0) return;
-    
+    const totalFiles = fileInputs.reduce((total, input) => total + document.getElementById(input.id).files.length, 0);
+    let uploadedCount = 0;
+    const failures = [];
     for (const input of fileInputs) {
         const files = document.getElementById(input.id).files;
-        if (files.length > 0) {
-            await uploadFiles(files, rowNumber, input.category);
-            uploadedFiles += files.length;
-            
-            const progress = Math.round((uploadedFiles / totalFiles) * 40) + 50;
-            updateProgress('กำลังอัพโหลดไฟล์... (' + uploadedFiles + '/' + totalFiles + ')', progress);
-        }
+        if (!files.length) continue;
+        const result = await uploadFiles(files, rowNumber, input.category);
+        uploadedCount += result.uploadedFiles.length;
+        failures.push(...result.failedFiles);
+        updateProgress('อัปโหลดสำเร็จ ' + uploadedCount + '/' + totalFiles + ' ไฟล์',
+            Math.round((uploadedCount / totalFiles) * 40) + 50);
     }
+    if (failures.length) throw new Error(failures.map(file => file.name + ': ' + file.message).join('\n'));
+    return { uploadedFiles: uploadedCount, totalFiles: totalFiles };
 }
 
 $(document).off('click', '.gallery-btn').on('click', '.gallery-btn', function() {
@@ -12240,6 +12186,7 @@ $('#example tbody').on('click', 'a.show-details', function (e) {
 });
 
 function editRow(rowNumber) {
+    if (isCreatingAsset || isSubmitting) return;
     console.log('=== EDIT ROW ===');
     console.log('Editing row:', rowNumber);
     
@@ -12258,11 +12205,15 @@ function editRow(rowNumber) {
                 const data = JSON.parse(result);
                 
                 if (data.status === 'success') {
+                    clearAssetForm();
+                    document.getElementById('isEditMode').value = 'true';
                     populateFormForEdit(data.rowData, data.folderIds);
                     
+                    const revision = assetFormRevision;
                     updateProgress('เสร็จสิ้น!', 100);
                     
                     setTimeout(() => {
+                        if (revision !== assetFormRevision) return;
                         hideProgress();
                         
                         document.getElementById('assetModalLabel').innerHTML = 
@@ -12409,6 +12360,7 @@ function loadExistingThumbnails(folderIds) {
 }
 
 function loadThumbnailsToContainer(folderId, containerId, label) {
+    const revision = assetFormRevision;
     const container = document.getElementById(containerId);
     if (!container) return;
     
@@ -12416,6 +12368,7 @@ function loadThumbnailsToContainer(folderId, containerId, label) {
     
     google.script.run
         .withSuccessHandler(function(result) {
+            if (revision !== assetFormRevision) return;
             try {
                 const data = JSON.parse(result);
                 
@@ -12430,6 +12383,7 @@ function loadThumbnailsToContainer(folderId, containerId, label) {
             }
         })
         .withFailureHandler(function(error) {
+            if (revision !== assetFormRevision) return;
             console.error('Failed to load thumbnails:', error);
             container.innerHTML = '<div class="error-files text-danger"><i class="bi bi-exclamation-triangle"></i> โหลด' + label + 'ไม่ได้</div>';
         })
@@ -12553,10 +12507,11 @@ function confirmDeletePayment(rowNumber, paymentRound, paymentIndex) {
 }
 
 function populateFormForEdit(rowData, folderIds) {
+    const revision = assetFormRevision;
     console.log('=== POPULATE FORM FOR EDIT (พ.ศ. ล้วน) ===');
     
     document.getElementById('rowNumber').value = rowData.rowNumber;
-    document.getElementById('mainFolderId').value = folderIds.mainFolderId;
+    document.getElementById('mainFolderId').value = folderIds.mainFolderId || '';
     
     document.getElementById('assetName').value = rowData.assetName || '';
     document.getElementById('status').value = rowData.status || '';
@@ -12600,6 +12555,7 @@ function populateFormForEdit(rowData, folderIds) {
     disableFileUploadsInEditMode();
     
     setTimeout(() => {
+        if (revision !== assetFormRevision) return;
         autoCalc();
         calculateInvestorReturn();
         calculateCommission();
@@ -12609,6 +12565,7 @@ function populateFormForEdit(rowData, folderIds) {
     loadExistingThumbnails(folderIds);
     
     setTimeout(() => {
+        if (revision !== assetFormRevision) return;
         loadPaymentHistoryForEdit(rowData.rowNumber);
     }, 500);
     
@@ -12671,11 +12628,13 @@ function disableFileUploadsInEditMode() {
 }
 
 function loadPaymentHistoryForEdit(rowNumber) {
+    const revision = assetFormRevision;
     console.log('=== LOAD PAYMENT HISTORY FOR EDIT ===');
     console.log('Loading payment history for row:', rowNumber);
     
     google.script.run
         .withSuccessHandler(function(result) {
+            if (revision !== assetFormRevision) return;
             try {
                 const data = JSON.parse(result);
                 
@@ -12711,6 +12670,7 @@ function loadPaymentHistoryForEdit(rowNumber) {
             }
         })
         .withFailureHandler(function(error) {
+            if (revision !== assetFormRevision) return;
             console.error('❌ Failed to load payment history:', error);
             document.getElementById('savedPayments').innerHTML = 
                 '<div class="alert alert-danger">' +

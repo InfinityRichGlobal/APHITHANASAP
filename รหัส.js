@@ -1696,6 +1696,7 @@ function safeLoadTable() {
 
 function filterDataByPermission(data, user) {
   if (!user || !user.class) return [];
+  data = data.filter(row => row.some(value => value !== '' && value != null));
   if (user.class === 'admin') {
     return data;
   }
@@ -1756,136 +1757,187 @@ function getNextRowNumber() {
   }
 }
 
-function reserveNextRowAndFolders(assetName) {
+// Reservation metadata lives in ScriptProperties; existing sheet columns stay unchanged.
+function assetReservationKey_(requestId) {
+  if (!/^[A-Za-z0-9_-]{16,100}$/.test(String(requestId || ''))) {
+    throw new Error('รหัสคำขอไม่ถูกต้อง กรุณารีเฟรชหน้าเว็บ');
+  }
+  return 'asset_reservation_' + requestId;
+}
+
+function assetReservationRow_(record) {
+  const row = findRowByNumber(record.rowNumber);
+  if (row === -1) throw new Error('ไม่พบแถวที่สร้างไว้ กรุณาตรวจสอบรายการทรัพย์สิน');
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DATABASE');
+  const values = sheet.getRange(row, 1, 1, 54).getValues()[0];
+  if (values[1] !== record.assetName || record.subfolderIds.some((id, i) => values[36 + i] !== id)) {
+    throw new Error('แถวนี้ไม่ตรงกับทรัพย์สินที่สร้างไว้ ระบบจะไม่เขียนทับข้อมูลอื่น');
+  }
+  return row;
+}
+
+function reserveNextRowAndFolders(assetName, requestId, sessionKey) {
+  const lock = LockService.getScriptLock();
   try {
-    const currentUser = getCurrentUser();
-    if (currentUser.class !== 'admin') {
+    const currentUser = sessionKey ? getCurrentUserWithSessionKey(sessionKey) : getCurrentUser();
+    if (!currentUser || currentUser.class !== 'admin') {
       throw new Error('คุณไม่มีสิทธิ์ในการเพิ่มข้อมูลใหม่');
     }
-    
+    assetName = String(assetName || '').trim();
+    if (!assetName || assetName.length > 50) throw new Error('กรุณากรอกชื่อทรัพย์สินไม่เกิน 50 ตัวอักษร');
+    // Old cached frontends must reload instead of making unidentifiable write requests.
+    const key = assetReservationKey_(requestId);
+    lock.waitLock(30000);
+    const props = PropertiesService.getScriptProperties();
+    const saved = props.getProperty(key);
+    let record = saved ? JSON.parse(saved) : null;
+    if (record && (record.owner !== currentUser.email || record.assetName !== assetName)) {
+      throw new Error('คำขอนี้ไม่ตรงกับผู้ใช้หรือชื่อทรัพย์สินเดิม');
+    }
+    if (record && record.state === 'cancelled') throw new Error('คำขอนี้ถูกยกเลิกแล้ว');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let databaseSheet = ss.getSheetByName('DATABASE');
     let clientSheet = ss.getSheetByName('CLIENT');
-    
     if (!databaseSheet) {
       databaseSheet = ss.insertSheet('DATABASE');
       createDatabaseHeaders(databaseSheet);
     }
-    
     if (!clientSheet) {
       clientSheet = ss.insertSheet('CLIENT');
-      const clientHeaders = ['ลำดับ', 'Main_Folder_ID', 'วันที่สร้างโฟลเดอร์', 'สถานะโฟลเดอร์', 'จำนวนไฟล์รวม', 'ขนาดไฟล์รวม'];
-      clientSheet.getRange(1, 1, 1, clientHeaders.length).setValues([clientHeaders]);
+      clientSheet.getRange(1, 1, 1, 6).setValues([['ลำดับ', 'Main_Folder_ID', 'วันที่สร้างโฟลเดอร์', 'สถานะโฟลเดอร์', 'จำนวนไฟล์รวม', 'ขนาดไฟล์รวม']]);
     }
-    
-    const nextNumber = getNextRowNumber();
-    const paddedNumber = String(nextNumber).padStart(2, '0');
-    
-    const rootFolder = DriveApp.getFolderById(FOLDER_ROOT);
-    const mainFolderName = `${paddedNumber}.${assetName}`;
-    const mainFolder = rootFolder.createFolder(mainFolderName);
-    const mainFolderId = mainFolder.getId();
-    
-    const subfolders = [
-      `${paddedNumber}.รูปถ่ายโฉนด`,
-      `${paddedNumber}.รูปถ่ายสถานที่จริง`,
-      `${paddedNumber}.หลักฐานการซื้อขาย`,
-      `${paddedNumber}.VDO`
-    ];
-    
-    const subfolderIds = [];
-    subfolders.forEach(folderName => {
-      const subfolder = mainFolder.createFolder(folderName);
-      subfolderIds.push(subfolder.getId());
+    if (!record) {
+      let nextNumber = getNextRowNumber();
+      // Include interrupted reservations so another request cannot reuse their number.
+      const properties = props.getProperties();
+      Object.keys(properties).filter(k => k.indexOf('asset_reservation_') === 0).forEach(k => {
+        const previous = JSON.parse(properties[k]);
+        nextNumber = Math.max(nextNumber, (parseInt(previous.rowNumber, 10) || 0) + 1);
+      });
+      const clientNumbers = new Set(clientSheet.getDataRange().getValues().slice(1).map(row => parseInt(row[0], 10)));
+      while (clientNumbers.has(nextNumber)) nextNumber++;
+      record = { owner: currentUser.email, assetName: assetName, rowNumber: String(nextNumber).padStart(2, '0'),
+        state: 'creating', createdAt: new Date().toISOString(), mainFolderId: '', subfolderIds: [] };
+      props.setProperty(key, JSON.stringify(record));
+    }
+    if (record.state === 'ready' || record.state === 'saved') {
+      const row = assetReservationRow_(record);
+      return JSON.stringify(Object.assign({}, record.result, { databaseRow: row }));
+    }
+    // Checkpoint folder IDs to resume the SAME reservation after a transient failure.
+    if (!record.mainFolderId) {
+      record.mainFolderId = DriveApp.getFolderById(FOLDER_ROOT).createFolder(record.rowNumber + '.' + assetName).getId();
+      props.setProperty(key, JSON.stringify(record));
+    }
+    const mainFolder = DriveApp.getFolderById(record.mainFolderId);
+    const names = ['รูปถ่ายโฉนด', 'รูปถ่ายสถานที่จริง', 'หลักฐานการซื้อขาย', 'VDO'];
+    names.forEach((name, index) => {
+      if (!record.subfolderIds[index]) {
+        record.subfolderIds[index] = mainFolder.createFolder(record.rowNumber + '.' + name).getId();
+        props.setProperty(key, JSON.stringify(record));
+      }
     });
-    
-    const databaseRow = findRowByNumber(paddedNumber);
-    let actualRow;
-    
-    if (databaseRow === -1) {
+    let actualRow = findRowByNumber(record.rowNumber);
+    if (actualRow === -1) {
+      const values = new Array(54).fill('');
+      values[0] = record.rowNumber;
+      values[1] = assetName;
+      record.subfolderIds.forEach((id, i) => { values[36 + i] = id; });
+      values[40] = values[41] = new Date(record.createdAt).toLocaleString('th-TH');
       actualRow = databaseSheet.getLastRow() + 1;
+      databaseSheet.getRange(actualRow, 1, 1, 54).setValues([values]);
+      SpreadsheetApp.flush();
     } else {
-      actualRow = databaseRow;
+      const existing = databaseSheet.getRange(actualRow, 1, 1, 54).getValues()[0];
+      if (String(existing[1]) !== assetName || record.subfolderIds.some((id, i) => existing[36 + i] !== id)) {
+        throw new Error('เลขทรัพย์สินนี้มีข้อมูลอื่นอยู่แล้ว ระบบจะไม่เขียนทับ');
+      }
     }
-    
-    databaseSheet.getRange(actualRow, 1).setValue(paddedNumber);
-    databaseSheet.getRange(actualRow, 2).setValue(assetName);
-    databaseSheet.getRange(actualRow, 41).setValue(new Date().toLocaleString('th-TH'));
-    databaseSheet.getRange(actualRow, 42).setValue(new Date().toLocaleString('th-TH'));
-    
-    databaseSheet.getRange(actualRow, 37).setValue(subfolderIds[0]);
-    databaseSheet.getRange(actualRow, 38).setValue(subfolderIds[1]);
-    databaseSheet.getRange(actualRow, 39).setValue(subfolderIds[2]);
-    databaseSheet.getRange(actualRow, 40).setValue(subfolderIds[3]);
-    
-    const clientRow = actualRow;
-    clientSheet.getRange(clientRow, 1).setValue(paddedNumber);
-    clientSheet.getRange(clientRow, 2).setValue(mainFolderId);
-    clientSheet.getRange(clientRow, 3).setValue(new Date());
-    clientSheet.getRange(clientRow, 4).setValue('สร้างแล้ว');
-    
-    return JSON.stringify({
-      status: 'success',
-      rowNumber: paddedNumber,
-      assetName: assetName,
-      mainFolderId: mainFolderId,
-      subfolderIds: subfolderIds,
-      databaseRow: actualRow
-    });
-    
+    const clients = clientSheet.getDataRange().getValues();
+    const existingClient = clients.slice(1).find(row => row[0] == record.rowNumber);
+    if (existingClient && existingClient[1] !== record.mainFolderId) {
+      throw new Error('เลขทรัพย์สินใน CLIENT ไม่ตรงกับโฟลเดอร์ ระบบจะไม่เขียนทับ');
+    }
+    if (!existingClient) {
+      clientSheet.getRange(clientSheet.getLastRow() + 1, 1, 1, 4)
+        .setValues([[record.rowNumber, record.mainFolderId, new Date(record.createdAt), 'สร้างแล้ว']]);
+    }
+    SpreadsheetApp.flush();
+    record.state = 'ready';
+    record.result = { status: 'success', rowNumber: record.rowNumber, assetName: assetName,
+      mainFolderId: record.mainFolderId, subfolderIds: record.subfolderIds, databaseRow: actualRow, requestId: requestId };
+    props.setProperty(key, JSON.stringify(record));
+    return JSON.stringify(record.result);
   } catch (error) {
-    return JSON.stringify({
-      status: 'error',
-      message: error.toString()
-    });
+    return JSON.stringify({ status: 'error', message: error.toString() });
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
   }
 }
 
-function deleteIncompleteData(rowNumber, mainFolderId) {
+function protectAssetReservation_(data, user) {
+  if (!data.requestId) return; // Existing clients and existing records keep their save path.
+  const lock = LockService.getScriptLock();
   try {
-    const currentUser = getCurrentUser();
-    if (currentUser.class !== 'admin') {
-      throw new Error('คุณไม่มีสิทธิ์ในการลบข้อมูล');
+    lock.waitLock(30000);
+    const props = PropertiesService.getScriptProperties();
+    const key = assetReservationKey_(data.requestId);
+    const record = JSON.parse(props.getProperty(key) || 'null');
+    if (!record || record.owner !== user.email || record.rowNumber != data.rowNumber ||
+        record.mainFolderId !== data.mainFolderId || !['ready', 'saved'].includes(record.state)) {
+      throw new Error('ข้อมูลคำขอสร้างทรัพย์สินไม่ตรงกัน ระบบจะไม่บันทึกทับแถวอื่น');
     }
-    
+    const row = assetReservationRow_(record);
+    // Protect before writing: a lost save response must never allow draft cleanup.
+    record.state = 'saved';
+    props.setProperty(key, JSON.stringify(record));
+    return row;
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
+  }
+}
+
+function deleteIncompleteData(rowNumber, mainFolderId, requestId, sessionKey) {
+  const lock = LockService.getScriptLock();
+  try {
+    const currentUser = sessionKey ? getCurrentUserWithSessionKey(sessionKey) : getCurrentUser();
+    if (!currentUser || currentUser.class !== 'admin') throw new Error('คุณไม่มีสิทธิ์ในการลบข้อมูล');
+    // Never delete legacy records or an unverified draft from an old browser tab.
+    if (!requestId) return JSON.stringify({ status: 'success', skipped: true });
+    lock.waitLock(30000);
+    const props = PropertiesService.getScriptProperties();
+    const key = assetReservationKey_(requestId);
+    const record = JSON.parse(props.getProperty(key) || 'null');
+    if (!record || record.owner !== currentUser.email || record.rowNumber != rowNumber ||
+        record.mainFolderId !== mainFolderId || record.state !== 'ready') {
+      return JSON.stringify({ status: 'success', skipped: true });
+    }
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const databaseSheet = ss.getSheetByName('DATABASE');
     const clientSheet = ss.getSheetByName('CLIENT');
-    
-    const databaseRow = findRowByNumber(rowNumber);
-    if (databaseRow !== -1) {
-      databaseSheet.deleteRow(databaseRow);
+    const row = findRowByNumber(rowNumber);
+    if (row === -1 || !clientSheet) return JSON.stringify({ status: 'success', skipped: true });
+    const values = databaseSheet.getRange(row, 1, 1, 54).getValues()[0];
+    const hasData = values.slice(2, 36).concat(values.slice(42)).some(value => value !== '' && value != null);
+    const clients = clientSheet.getDataRange().getValues();
+    const clientIndex = clients.findIndex((value, i) => i > 0 && value[0] == rowNumber && value[1] === mainFolderId);
+    if (hasData || values[1] !== record.assetName || clientIndex < 1 ||
+        record.subfolderIds.some((id, i) => values[36 + i] !== id)) {
+      return JSON.stringify({ status: 'success', skipped: true });
     }
-    
-    if (clientSheet) {
-      const clientData = clientSheet.getDataRange().getValues();
-      for (let i = 1; i < clientData.length; i++) {
-        if (clientData[i][0] == rowNumber) {
-          const clientRow = i + 1;
-          clientSheet.deleteRow(clientRow);
-          break;
-        }
-      }
-    }
-    
-    if (mainFolderId) {
-      try {
-        const folder = DriveApp.getFolderById(mainFolderId);
-        folder.setTrashed(true);
-      } catch (folderError) {
-      }
-    }
-    
-    return JSON.stringify({
-      status: 'success',
-      message: 'ลบข้อมูลที่ไม่สมบูรณ์เรียบร้อย'
-    });
-    
+    // A cancelled token cannot be replayed to delete a later row with the same number.
+    record.state = 'cancelled';
+    props.setProperty(key, JSON.stringify(record));
+    // Clear only this verified new draft; do not shift other rows or their formulas.
+    databaseSheet.getRange(row, 1, 1, 54).clearContent();
+    clientSheet.getRange(clientIndex + 1, 1, 1, 6).clearContent();
+    SpreadsheetApp.flush();
+    try { DriveApp.getFolderById(mainFolderId).setTrashed(true); } catch (folderError) {}
+    return JSON.stringify({ status: 'success', message: 'ลบเฉพาะข้อมูลร่างที่ยังไม่บันทึกแล้ว' });
   } catch (error) {
-    return JSON.stringify({
-      status: 'error',
-      message: error.toString()
-    });
+    return JSON.stringify({ status: 'error', message: error.toString() });
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
   }
 }
 
@@ -1943,13 +1995,14 @@ function saveFullFormData(data) {
         }
         
         const rowNumber = data.rowNumber;
-        const row = findRowByNumber(rowNumber);
+        let row = findRowByNumber(rowNumber);
         
         if (row === -1) {
             throw new Error('ไม่พบแถวที่ต้องการบันทึกข้อมูล: ' + rowNumber);
         }
         
         
+        if (data.requestId) row = protectAssetReservation_(data, currentUser);
         const formData = data.formData;
         
         
@@ -3904,7 +3957,7 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
     
     let actualRowNumber = parseInt(rowNumber);
     
-    const sheetRowNumber = actualRowNumber + 1;
+    const sheetRowNumber = findRowByNumber(rowNumber);
     
     
     if (isNaN(actualRowNumber) || actualRowNumber < 1) {
@@ -3912,12 +3965,14 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
     }
     
     const uploadedFiles = [];
+    const failedFiles = [];
     
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('DATABASE');
+    if (!sheet) throw new Error('ไม่พบชีต DATABASE');
     const lastRow = sheet.getLastRow();
     
     
-    if (sheetRowNumber > lastRow) {
+    if (sheetRowNumber < 2 || sheetRowNumber > lastRow) {
       throw new Error('Row number ' + sheetRowNumber + ' exceeds sheet range (max: ' + lastRow + ')');
     }
     
@@ -3956,6 +4011,7 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
         const existingFiles = targetFolder.getFilesByName(file.name);
         if (existingFiles.hasNext()) {
           const existingFile = existingFiles.next();
+          existingFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
           uploadedFiles.push({
             id: existingFile.getId(),
             name: existingFile.getName(),
@@ -3987,13 +4043,15 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
         });
         
       } catch (fileError) {
+        failedFiles.push({ name: file.name, message: fileError.toString() });
         console.error('❌ FILE UPLOAD ERROR:', fileError.toString());
       }
     });
     
     
     return JSON.stringify({
-      status: 'success',
+      status: failedFiles.length || !uploadedFiles.length ? 'error' : 'success',
+      failedFiles: failedFiles,
       category: category,
       uploadedFiles: uploadedFiles,
       targetFolder: targetFolderId,
@@ -4002,7 +4060,8 @@ function uploadFilesByCategory(fileData, rowNumber, category) {
       targetSheetRow: sheetRowNumber,
       assetName: rowData[1],
       assetId: rowData[0],
-      message: 'อัพโหลด ' + uploadedFiles.length + ' ไฟล์ไปยัง ' + rowData[1] + ' (' + category + ') สำเร็จ'
+      message: failedFiles.length ? failedFiles.map(file => file.name + ': ' + file.message).join('; ') :
+        (uploadedFiles.length ? 'อัพโหลด ' + uploadedFiles.length + ' ไฟล์สำเร็จ' : 'ไม่มีไฟล์ที่อัปโหลดสำเร็จ')
     });
     
   } catch (error) {
